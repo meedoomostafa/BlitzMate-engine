@@ -1,6 +1,6 @@
 import sys
 import chess
-from engine.engine import Engine
+from engine.main import Engine
 
 class UCI:
     def __init__(self):

@@ -1,6 +1,6 @@
-from core.board import ChessBoard
-from core.search import SearchEngine
-from core.evaluator import Evaluator
+from engine.core.board import ChessBoard
+from engine.core.search import SearchEngine
+from engine.core.evaluator import Evaluator
 
 class Engine:
     def __init__(self, depth=3):
