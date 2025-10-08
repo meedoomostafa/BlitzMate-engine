@@ -25,7 +25,7 @@ for piece in ["r", "n", "b", "q", "k", "p"]:
     pieces[piece.upper()] = pygame.transform.smoothscale(img_white, (SQUARE_SIZE, SQUARE_SIZE))
 
 board = chess.Board()
-engine = SearchEngine(depth=4)  # use smaller depth first (6 will be slow)
+engine = SearchEngine(depth=6)  # use smaller depth first (6 will be slow)
 selected_square = None
 engine_thread = None
 

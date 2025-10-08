@@ -58,6 +58,12 @@ class Evaluator:
         """
         # piece map once
         piece_map = board.piece_map()
+        
+        pieces_by_type_color = { (pt, color): board.pieces(pt, color) for pt in range(1,7) for color in [chess.WHITE, chess.BLACK] }
+        
+        white_attacks = [board.attackers(chess.WHITE, sq) for sq in range(64)]
+        black_attacks = [board.attackers(chess.BLACK, sq) for sq in range(64)]
+
 
         # compute game phase (0 = endgame, 1 = opening/mid)
         phase = self._game_phase(piece_map, board)
@@ -68,7 +74,7 @@ class Evaluator:
         threats = self._threats(board, piece_map)
         pawns = self._pawn_structure(board, piece_map)
         king = self._king_safety(board, piece_map, phase) if self.use_king_safety else 0
-        tactics = self._tactics(board, piece_map) if self.use_tactics else 0
+        tactics = self._tactics(board, pieces_by_type_color, white_attacks, black_attacks) if self.use_tactics else 0
 
         total = material + positional + mobility + threats + pawns + king + tactics
 
@@ -443,50 +449,42 @@ class Evaluator:
     # -------------------------
     # Simple tactical checks: hanging pieces, simple capture-sequence heuristics
     # -------------------------
-    def _tactics(self, board, piece_map):
+    def _tactics(self, board, piece_by_type_color, white_attacks, black_attacks):
         score = 0
-        # hanging pieces: attacked but lightly or not defended
-        for sq, p in piece_map.items():
-            attackers = board.attackers(not p.color, sq)
-            if not attackers:
-                continue
-            defenders = board.attackers(p.color, sq)
-            # if attackers exist and defenders are weaker or absent -> hanging
-            att_val = 0
-            for a in attackers:
-                pa = board.piece_at(a)
-                if pa:
-                    att_val += PIECE_VALUES.get(pa.piece_type, 0)
-            def_val = 0
-            for d in defenders:
-                pd = board.piece_at(d)
-                if pd:
-                    def_val += PIECE_VALUES.get(pd.piece_type, 0)
-            # if attackers' total value < defenders and attackers exist -> potential tactic
-            attacked_gain = sum(PIECE_VALUES.get(board.piece_at(a).piece_type,0) for a in attackers)
-            defended_gain = sum(PIECE_VALUES.get(board.piece_at(d).piece_type,0) for d in defenders)
+        for (pt, color), squares in piece_by_type_color.items():
+            for sq in squares:
+                attackers = white_attacks[sq] if color == chess.WHITE else black_attacks[sq]
+                if not attackers:
+                    continue
 
-            SEE = attacked_gain - defended_gain - PIECE_VALUES.get(p.piece_type,0)
+                defenders = board.attackers(color, sq)
 
-            if SEE > 0:
-                # it’s a good sacrifice, reward or do nothing
-                score += int(SEE * 0.1) if p.color == chess.WHITE else -int(SEE * 0.1)
-            else:
-                # danger: attackers’ value exceeds defenders → penalize
-                score -= int(abs(SEE) * 0.5) if p.color == chess.WHITE else -int(abs(SEE) * 0.5)
+                attacked_gain = sum(
+                    PIECE_VALUES.get(board.piece_at(a).piece_type, 0)
+                    for a in attackers if board.piece_at(a)
+                )
+                defended_gain = sum(
+                    PIECE_VALUES.get(board.piece_at(d).piece_type, 0)
+                    for d in defenders if board.piece_at(d)
+                )
 
+                SEE = attacked_gain - defended_gain - PIECE_VALUES.get(pt, 0)
 
-        # simple capture heuristics (see if captures exist that win material ignoring sequence):
-        # iterate legal captures and reward side if capture's relative SEE is positive (cheap approximation)
+                if SEE > 0:
+                    score += int(SEE * 0.1) if color == chess.WHITE else -int(SEE * 0.1)
+                else:
+                    score -= int(abs(SEE) * 0.5) if color == chess.WHITE else -int(abs(SEE) * 0.5)
+
+        # simple capture heuristics
         for mv in board.generate_legal_captures():
             victim = board.piece_at(mv.to_square)
             attacker = board.piece_at(mv.from_square)
             if not victim or not attacker:
                 continue
             gain = PIECE_VALUES.get(victim.piece_type, 0) - PIECE_VALUES.get(attacker.piece_type, 0)
-            # reward captures that win value
             if gain > 0:
                 score += int(gain * 0.6) if attacker.color == chess.WHITE else -int(gain * 0.6)
             elif gain < 0:
                 score += int(gain * 0.2) if attacker.color == chess.WHITE else -int(gain * 0.2)
+
         return score
