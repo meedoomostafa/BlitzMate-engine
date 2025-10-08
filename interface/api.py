@@ -1,0 +1,4 @@
+import fastapi
+
+app = fastapi()
+
