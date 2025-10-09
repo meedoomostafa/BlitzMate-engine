@@ -2,6 +2,7 @@ import pygame
 import chess
 import threading
 import sys, os
+from engine import config
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from engine.core.search import SearchEngine  
@@ -25,7 +26,7 @@ for piece in ["r", "n", "b", "q", "k", "p"]:
     pieces[piece.upper()] = pygame.transform.smoothscale(img_white, (SQUARE_SIZE, SQUARE_SIZE))
 
 board = chess.Board()
-engine = SearchEngine(depth=6)  # use smaller depth first (6 will be slow)
+engine = SearchEngine(config.SearchConfig.depth)  # use smaller depth first (6 will be slow)
 selected_square = None
 engine_thread = None
 
