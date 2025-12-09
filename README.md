@@ -1,162 +1,149 @@
-# BlitzMate Chess Engine ♟️
+# ♟️ BlitzMate Chess Engine
 
-A high-performance chess engine built in Python with a modular architecture, featuring alpha-beta pruning, transposition tables, and an intuitive GUI.
+**Version 1.0 (Stable)**
 
-## 🎯 Project Overview
+> **A strategic, Python-based chess engine featuring a custom Negamax search, Tapered Evaluation, and a modern GUI.**
 
-BlitzMate is a classical chess engine implementation that combines efficient search algorithms with position evaluation to play competitive chess. The project is structured into three independent modules:
+-----
 
-- **Engine**: Core chess logic, move generation, position evaluation, and search algorithms
-- **GUI**: Graphical user interface for playing against the engine
-- **Interface**: Communication layer supporting CLI, API, and UCI protocol
+## Project Overview
+
+BlitzMate has evolved from a basic move calculator into a strategic engine. It moves beyond simple material counting to understand positional nuances like piece activity, king safety, and pawn structures.
+
+The project is structured into three independent modules:
+
+  * **Engine (The Brain):** Runs pure Python logic with Zobrist hashing and Alpha-Beta pruning.
+  * **GUI (The Hands):** A responsive Pygame interface with drag-and-drop and premove support.
+  * **Interface (The Voice):** Supports CLI and UCI protocols for testing.
+
+-----
+
+## ⚡ Key Features (v1.0)
+
+### 🧠 Intelligent Search
+
+The core decision-making process uses advanced algorithms to calculate the best move efficiently.
+
+  * **Negamax with Alpha-Beta Pruning:** Efficiently prunes the search tree to ignore bad variations.
+  * **Null Move Pruning (NMP):** Massively increases search depth by pruning branches where passing the turn is still winning.
+  * **Quiescence Search:** Solves the "Horizon Effect" by searching violent moves (captures) beyond the target depth.
+  * **Iterative Deepening:** Ensures the engine always has a "best move" ready, even if time runs out.
+
+### 🛡️ Strategic Evaluation
+
+  * **Tapered Evaluation:** Interpolates between Middlegame and Endgame scores (e.g., King hides in middlegame, attacks in endgame).
+  * **Piece-Square Tables (PST):** Complete tables for all pieces. The engine knows to centralize Knights/Bishops and put Rooks on open files.
+  * **Threat Detection:** Static analysis prevents tactical blunders (like hanging pieces or moving a Queen to a square attacked by a Pawn).
+  * **Perspective Correction:** Fixed logic ensuring the engine evaluates positions relative to the side to move.
+
+### 🖥️ Modern GUI
+
+  * **Drag & Drop:** Smooth piece movement mechanics.
+  * **Visual Promotion:** Context menu for selecting Queen, Rook, Bishop, or Knight.
+  * **Premove Support:** Allows players to input moves during the engine's turn.
+
+-----
 
 ## 🏗️ Architecture
 
-### Engine Module
-- **`board.py`**: Chess board representation, move generation, and game state management
-- **`evaluator.py`**: Position evaluation function considering material, piece placement, king safety, and more
-- **`search.py`**: Alpha-beta pruning search with move ordering and iterative deepening
-- **`transposition.py`**: Hash table for caching previously evaluated positions
-- **`analyzer.py`**: Game analysis and position assessment tools
-- **`config.py`**: Engine configuration and tunable parameters
+### Engine Module (`engine/core/`)
 
-### GUI Module
-- Built with Python GUI framework
-- Visual chess board with drag-and-drop piece movement
-- Real-time position evaluation display
-- Assets folder contains piece images (white/black pieces: Pawn, Knight, Bishop, Rook, Queen, King)
+| File | Role | Description |
+| :--- | :--- | :--- |
+| **`search.py`** | The "Eyes" | Implements Negamax, NMP, and Move Ordering (MVV-LVA). |
+| **`evaluator.py`** | The "Brain" | Handles material counting, PST lookup, and threat assessment. |
+| **`transposition.py`** | The "Memory"| Uses Zobrist Hashing (Polyglot) for $O(1)$ state lookups. |
+| **`config.py`** | Settings | Centralized configuration for search depth, hash size, and weights. |
 
-### Interface Module
-- **`cli.py`**: Command-line interface for terminal play
-- **`api.py`**: RESTful API for integration with other applications
-- **`uci.py`**: Universal Chess Interface protocol support for compatibility with chess GUIs
+-----
 
-## 🚀 Installation
+## Installation
 
 ### Prerequisites
-- Python 3.13 or higher
-- PyPy3 (recommended for engine performance)
-- pip package manager
 
-### Clone the Repository
+  * Python 3.13 or higher
+  * pip package manager
+
+### Setup Guide
+
 ```bash
+# Clone the repository
 git clone https://github.com/meedoomostafa/BlitzMate-engine.git
 cd BlitzMate-engine
-```
 
-### Setup Engine
-```bash
-cd engine
-pypy3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install --upgrade pip
-pip install -r requirements.txt
-deactivate
-```
-
-### Setup GUI
-```bash
-cd ../gui
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install --upgrade pip
-pip install -r requirements.txt
-deactivate
-```
-
-### Setup Interface
-```bash
-cd ../interface
+# Create virtual environment
 python3.13 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
 pip install --upgrade pip
 pip install -r requirements.txt
-deactivate
 ```
+
+-----
 
 ## 🎮 Usage
 
-### Running the GUI
+### Running the GUI (Recommended)
+
+This launches the graphical board with **Depth 5** search enabled by default.
+
 ```bash
-cd gui
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-python main.py
+cd chess_engine  # Run from root folder
+python -m gui.main
 ```
 
 ### Running the CLI
+
+For testing or debugging without graphics:
+
 ```bash
-cd interface
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-python cli.py
+python -m interface.cli
 ```
 
-### Using UCI Protocol
-```bash
-cd interface
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-python uci.py
-```
+-----
 
-## 🧠 How It Works
+## 🧠 Current Performance
 
-### Move Generation
-The engine uses bitboards and efficient data structures to generate all legal moves for a given position, including special moves like castling, en passant, and pawn promotion.
+  * **Search Depth:** Comfortably runs at Depth 5-6 in standard time controls.
+  * **Nodes Per Second:** Optimized via Zobrist Hashing (Integers) vs old FEN strings.
+  * **Style:** Positional/Tactical. Prioritizes development and safety; avoids "weird" shuffling.
 
-### Position Evaluation
-The evaluator assigns a numerical score to each position based on:
-- **Material balance**: Piece values (Pawn=100, Knight=320, Bishop=330, Rook=500, Queen=900)
-- **Piece-square tables**: Positional bonuses for pieces on optimal squares
-- **King safety**: Pawn shield and king exposure evaluation
-- **Pawn structure**: Doubled, isolated, and passed pawns
-- **Mobility**: Number of legal moves available
-- **Control of key squares**: Center control and outpost evaluation
+-----
 
-### Search Algorithm
-The engine uses **alpha-beta pruning** with several optimizations:
-- **Iterative deepening**: Gradually increases search depth for better time management
-- **Move ordering**: Searches promising moves first (captures, checks, killers)
-- **Transposition table**: Stores previously evaluated positions to avoid redundant calculations
-- **Quiescence search**: Extends search for tactical positions to avoid horizon effect
-- **Null move pruning**: Reduces search in positions where even passing doesn't help
+## 📋 To-Do Roadmap (v2.0)
 
-## 📋 To-Do List
+**GUI & Architecture**
 
-### High Priority
-- [ ] **Optimize `evaluator.py`**: Improve evaluation function performance and accuracy
-  - Profile bottlenecks in evaluation
-  - Implement incremental evaluation updates
-  - Fine-tune piece-square tables and weights
-  
-- [ ] **Optimize move caching**: Enhance transposition table efficiency
-  - Implement better replacement schemes
-  - Add aging mechanism for old entries
-  - Optimize hash key generation
+  * [ ] **Non-Blocking Architecture:** Migrate the engine to a background thread so the window stays responsive during calculations.
 
-### Future Enhancements
-- [ ] Opening book integration
-- [ ] Endgame tablebases support
-- [ ] Multi-threading for parallel search
-- [ ] Machine learning-based evaluation
-- [ ] Game notation (PGN) import/export
-- [ ] Time control management
-- [ ] Pondering (thinking on opponent's time)
+**Optimization & Speed**
+
+  * [ ] **Bitboard Evaluation:** Migrate `evaluator.py` to use bitwise operations for pawn structures (Passers/Isolations).
+  * [ ] **Multiprocessing:** Implement Lazy SMP to utilize multiple CPU cores (bypassing Python GIL).
+
+**Knowledge**
+
+  * [ ] **Opening Book:** Integrate `chess.polyglot` to play standard openings (Sicilian, Queen's Gambit, etc.) instantly.
+  * [ ] **Endgame Tablebases:** Integrate Syzygy tablebases for perfect endgame play.
+
+**Search Refinements**
+
+  * [ ] **Killer Heuristic:** Prioritize moves that caused cutoffs in sibling nodes.
+  * [ ] **Late Move Reduction (LMR):** Search less promising moves at reduced depth.
+
+-----
 
 ## 🤝 Contributing
 
-Contributions are welcome! Feel free to:
-- Report bugs and issues
-- Suggest new features
-- Submit pull requests
-- Improve documentation
+Contributions are welcome\! Feel free to:
+
+1.  Report bugs (especially evaluation blind spots).
+2.  Submit pull requests for optimization.
 
 ## 📄 License
 
 This project is open source. Please check the repository for license details.
 
-## 👨‍💻 Author
-
-Created by [Meedo Mostafa](https://github.com/meedoomostafa)
-
----
-
-**Note**: This engine is optimized to run with PyPy3 for maximum performance. The GUI and interface modules use standard Python 3.13 for better library compatibility.
+**👨‍💻 Author**
+Created by **meedoomostafa**
