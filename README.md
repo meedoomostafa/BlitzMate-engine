@@ -119,12 +119,12 @@ python -m interface.cli
 
 **Optimization & Speed**
 
-  * [ ] **Bitboard Evaluation:** Migrate `evaluator.py` to use bitwise operations for pawn structures (Passers/Isolations).
+  * [x] **Bitboard Evaluation:** Migrate `evaluator.py` to use bitwise operations for pawn structures (Passers/Isolations).
   * [ ] **Multiprocessing:** Implement Lazy SMP to utilize multiple CPU cores (bypassing Python GIL).
 
 **Knowledge**
 
-  * [ ] **Opening Book:** Integrate `chess.polyglot` to play standard openings (Sicilian, Queen's Gambit, etc.) instantly.
+  - [x] **Opening Book:** Integrate `chess.polyglot` to play standard openings (Sicilian, Queen's Gambit, etc.) instantly.
   * [ ] **Endgame Tablebases:** Integrate Syzygy tablebases for perfect endgame play.
 
 **Search Refinements**
