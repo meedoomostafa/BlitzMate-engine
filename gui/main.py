@@ -3,310 +3,402 @@ import chess
 import threading
 import sys, os
 
-# To ensure we can import from the engine folder
+# Ensure engine import works
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from engine.config import CONFIG
 from engine.core.search import SearchEngine  
 
 pygame.init()
+pygame.font.init()
+pygame.mixer.init()
 
-# Board
-SQUARE_SIZE = 110
+SQUARE_SIZE = 90  
 BOARD_SIZE = 8 * SQUARE_SIZE
-screen = pygame.display.set_mode((BOARD_SIZE, BOARD_SIZE))
-pygame.display.set_caption(f"BlitzMate GUI - {CONFIG.ui.engine_name}")
+PANEL_WIDTH = 250
+WINDOW_WIDTH = BOARD_SIZE + PANEL_WIDTH
+WINDOW_HEIGHT = BOARD_SIZE
 
-# Colors
-LIGHT_COLOR = (240, 217, 181)
-DARK_COLOR = (181, 136, 99)
-HIGHLIGHT_COLOR = (186, 202, 68)
-LAST_MOVE_COLOR = (205, 210, 106)
-PREMOVE_COLOR = (200, 100, 100) 
-PREMOVE_HIGHLIGHT = (220, 120, 120)
-PROMOTION_BG_COLOR = (255, 255, 255)
+COLOR_LIGHT = (238, 238, 210)
+COLOR_DARK = (118, 150, 86)
+COLOR_HIGHLIGHT = (186, 202, 68, 200) 
+COLOR_LAST_MOVE = (246, 246, 105, 180) 
+COLOR_PREMOVE = (200, 100, 100, 180)
+COLOR_CHECK = (255, 50, 50)
+COLOR_PANEL_BG = (40, 40, 40)
+COLOR_TEXT = (240, 240, 240)
+COLOR_TEXT_ACCENT = (150, 150, 150)
 
-# Load Assets
-pieces = {}
-base_folder = os.path.dirname(os.path.abspath(__file__))
-assets_path = os.path.join(base_folder, "assets")
+# Fonts
+FONT_COORD = pygame.font.SysFont("Arial", 14, bold=True)
+FONT_UI = pygame.font.SysFont("Verdana", 20)
+FONT_HISTORY = pygame.font.SysFont("Consolas", 16)
 
-def load_assets():
-    for piece in ["r", "n", "b", "q", "k", "p"]:
-        try:
-            img_black = pygame.image.load(os.path.join(assets_path, f"b{piece.upper()}.png"))
-            img_white = pygame.image.load(os.path.join(assets_path, f"w{piece.upper()}.png"))
-            pieces[piece] = pygame.transform.smoothscale(img_black, (SQUARE_SIZE, SQUARE_SIZE))
-            pieces[piece.upper()] = pygame.transform.smoothscale(img_white, (SQUARE_SIZE, SQUARE_SIZE))
-        except FileNotFoundError:
-            print(f"Warning: Asset {piece} not found in {assets_path}")
+class SoundManager:
+    def __init__(self):
+        self.sounds = {}
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        sound_dir = os.path.join(base_path, "assets", "sounds")
+        
+        files = {
+            'move': 'move.wav',
+            'capture': 'capture.wav',
+            'check': 'notify.wav',
+            'end': 'notify.wav'
+        }
+        
+        for name, file in files.items():
+            path = os.path.join(sound_dir, file)
+            if os.path.exists(path):
+                self.sounds[name] = pygame.mixer.Sound(path)
+            else:
+                print(f"Warning: Sound file not found: {path}")
 
-load_assets()
+    def play(self, name):
+        if name in self.sounds:
+            self.sounds[name].play()
 
-# Initial Part
-board = chess.Board()
-engine = SearchEngine(depth=CONFIG.search.depth) 
-engine_thread = None
-game_over = False
+class ChessGUI:
+    def __init__(self):
+        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        pygame.display.set_caption(f"BlitzMate - {CONFIG.ui.engine_name}")
+        self.clock = pygame.time.Clock()
+        
+        # Assets
+        self.pieces = self.load_pieces()
+        self.sound = SoundManager()
+        
+        # Game State
+        self.board = chess.Board()
+        self.engine = SearchEngine(depth=CONFIG.search.depth)
+        self.game_over = False
+        self.engine_thinking = False
+        
+        # UI State
+        self.selected_sq = None
+        self.dragging_sq = None
+        self.premove = None
+        self.promotion_state = None # {start, end, color}
+        
+        # Engine Event
+        self.ENGINE_MOVE_EVENT = pygame.USEREVENT + 1
 
-# Interaction State
-selected_square = None
-dragging_square = None
-dragging_piece = None
-mouse_pos = (0, 0)
+    def load_pieces(self):
+        pieces = {}
+        assets_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+        for p in ["r", "n", "b", "q", "k", "p"]:
+            for color in ["b", "w"]:
+                key = p if color == "b" else p.upper()
+                try:
+                    img = pygame.image.load(os.path.join(assets_path, f"{color}{p.upper()}.png"))
+                    pieces[key] = pygame.transform.smoothscale(img, (SQUARE_SIZE, SQUARE_SIZE))
+                except:
+                    print(f"Missing asset: {key}")
+        return pieces
 
-# Promotion State
-promotion_pending = False
-promotion_move_start = None
-promotion_move_end = None
-promotion_color = None
+    def get_square_at(self, pos):
+        if pos[0] > BOARD_SIZE: return None
+        col = pos[0] // SQUARE_SIZE
+        row = 7 - (pos[1] // SQUARE_SIZE)
+        return chess.square(col, row)
 
-# Premove State
-premove = None
 
-# Custom Events
-ENGINE_MOVE_EVENT = pygame.USEREVENT + 1
+    def draw(self):
+        self.screen.fill(COLOR_PANEL_BG)
+        self.draw_board()
+        self.draw_highlights()
+        self.draw_pieces()
+        self.draw_drag()
+        self.draw_coordinates()
+        self.draw_side_panel()
+        if self.promotion_state:
+            self.draw_promotion_menu()
+        pygame.display.flip()
 
+    def draw_board(self):
+        for row in range(8):
+            for col in range(8):
+                color = COLOR_LIGHT if (row + col) % 2 == 0 else COLOR_DARK
+                pygame.draw.rect(self.screen, color, 
+                                 (col*SQUARE_SIZE, row*SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+
+    def draw_coordinates(self):
+        for r in range(8):
+            row_sq_color = (0 + (7-r)) % 2 
+            text_color = COLOR_DARK if row_sq_color == 0 else COLOR_LIGHT
+            lbl = FONT_COORD.render(str(r+1), True, text_color)
+            self.screen.blit(lbl, (2, (7-r)*SQUARE_SIZE + 2))
+            
+        # Draw Files (a-h) on the bottom
+        for c in range(8):
+            col_sq_color = (c + 0) % 2
+            text_color = COLOR_DARK if col_sq_color == 0 else COLOR_LIGHT
+            lbl = FONT_COORD.render(chr(ord('a')+c), True, text_color)
+            self.screen.blit(lbl, (c*SQUARE_SIZE + SQUARE_SIZE - 12, BOARD_SIZE - 18))
+
+    def draw_highlights(self):
+        s = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA) # Surface for transparency
+        
+        if self.board.move_stack:
+            last = self.board.move_stack[-1]
+            s.fill(COLOR_LAST_MOVE)
+            self.screen.blit(s, self.sq_to_rect(last.from_square))
+            self.screen.blit(s, self.sq_to_rect(last.to_square))
+            
+        if self.selected_sq is not None:
+            s.fill(COLOR_HIGHLIGHT)
+            self.screen.blit(s, self.sq_to_rect(self.selected_sq))
+            
+        if self.premove:
+            s.fill(COLOR_PREMOVE)
+            self.screen.blit(s, self.sq_to_rect(self.premove.from_square))
+            self.screen.blit(s, self.sq_to_rect(self.premove.to_square))
+
+        if self.board.is_check():
+            king_sq = self.board.king(self.board.turn)
+            if king_sq is not None:
+                pygame.draw.circle(self.screen, COLOR_CHECK, 
+                                   self.sq_center(king_sq), SQUARE_SIZE//2, 4)
+
+        if self.board.turn == chess.WHITE and (self.selected_sq is not None or self.dragging_sq is not None):
+            src = self.dragging_sq if self.dragging_sq is not None else self.selected_sq
+            for move in self.board.legal_moves:
+                if move.from_square == src:
+                    if self.board.is_capture(move):
+                        pygame.draw.circle(self.screen, (100, 100, 100, 100), 
+                                           self.sq_center(move.to_square), SQUARE_SIZE//2, 5)
+                    else:
+                        pygame.draw.circle(self.screen, (80, 80, 80, 100), 
+                                           self.sq_center(move.to_square), SQUARE_SIZE//6)
+
+    def draw_pieces(self):
+        for sq in chess.SQUARES:
+            piece = self.board.piece_at(sq)
+            
+            if self.premove:
+                if sq == self.premove.from_square:
+                    piece = None 
+                elif sq == self.premove.to_square:
+                    piece = self.board.piece_at(self.premove.from_square)  
+            
+            if piece and sq != self.dragging_sq:
+                rect = self.sq_to_rect(sq)
+                self.screen.blit(self.pieces[piece.symbol()], rect)
+
+    def draw_drag(self):
+        if self.dragging_sq is not None:
+            piece = self.board.piece_at(self.dragging_sq)
+            if piece:
+                pos = pygame.mouse.get_pos()
+                img = self.pieces[piece.symbol()]
+                self.screen.blit(img, (pos[0] - SQUARE_SIZE//2, pos[1] - SQUARE_SIZE//2))
+
+    def draw_side_panel(self):
+        x = BOARD_SIZE + 10
+        y = 20
+        
+        turn_text = "White to Move" if self.board.turn == chess.WHITE else "Black (Engine)"
+        if self.game_over: turn_text = "Game Over"
+        
+        label = FONT_UI.render(turn_text, True, COLOR_TEXT)
+        self.screen.blit(label, (x, y))
+        y += 40
+        
+        hist_label = FONT_UI.render("Move History:", True, COLOR_TEXT_ACCENT)
+        self.screen.blit(hist_label, (x, y))
+        y += 30
+        
+        history = [m.uci() for m in self.board.move_stack][-16:]
+        for i in range(0, len(history), 2):
+            move_num = (len(self.board.move_stack) - len(history) + i) // 2 + 1
+            w_move = history[i]
+            b_move = history[i+1] if i+1 < len(history) else ""
+            line = f"{move_num}. {w_move}  {b_move}"
+            txt = FONT_HISTORY.render(line, True, COLOR_TEXT)
+            self.screen.blit(txt, (x + 10, y))
+            y += 20
+
+        if self.game_over:
+            y += 40
+            res = self.board.result()
+            res_lbl = FONT_UI.render(f"Result: {res}", True, (100, 200, 100))
+            self.screen.blit(res_lbl, (x, y))
+
+    def draw_promotion_menu(self):
+        start, end, color = self.promotion_state
+        
+        col = chess.square_file(end)
+        row = 0 if chess.square_rank(end) == 7 else 4
+        
+        menu_rect = pygame.Rect(col*SQUARE_SIZE, row*SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE*4)
+        
+        pygame.draw.rect(self.screen, (255,255,255), menu_rect)
+        pygame.draw.rect(self.screen, (0,0,0), menu_rect, 2)
+        
+        opts = ['q', 'r', 'b', 'n'] if color == chess.BLACK else ['Q', 'R', 'B', 'N']
+        for i, p_char in enumerate(opts):
+            self.screen.blit(self.pieces[p_char], (menu_rect.x, menu_rect.y + i*SQUARE_SIZE))
 
 # #-----------------------#
 # | Helper Functions Part |
 # #-----------------------#
 
-def get_square_under_mouse(pos):
-    col = pos[0] // SQUARE_SIZE
-    row = 7 - (pos[1] // SQUARE_SIZE)
-    if 0 <= col <= 7 and 0 <= row <= 7:
-        return chess.square(col, row)
-    return None
+    def sq_to_rect(self, sq):
+        col = chess.square_file(sq)
+        row = 7 - chess.square_rank(sq)
+        return (col * SQUARE_SIZE, row * SQUARE_SIZE)
 
-def draw_board():
-    for row in range(8):
-        for col in range(8):
-            square = chess.square(col, 7 - row)
-            color = LIGHT_COLOR if (row + col) % 2 == 0 else DARK_COLOR
-            
-            if square == selected_square:
-                color = HIGHLIGHT_COLOR
-            elif premove and (square == premove.from_square or square == premove.to_square):
-                color = PREMOVE_HIGHLIGHT
-            elif board.move_stack and (square == board.move_stack[-1].from_square or square == board.move_stack[-1].to_square):
-                color = LAST_MOVE_COLOR
+    def sq_center(self, sq):
+        rect = self.sq_to_rect(sq)
+        return (rect[0] + SQUARE_SIZE//2, rect[1] + SQUARE_SIZE//2)
 
-            pygame.draw.rect(screen, color, (col*SQUARE_SIZE, row*SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
-
-            # Draw Valid Move Hints (Dots) - Only show if it is HUMAN turn
-            if board.turn == chess.WHITE and not premove:
-                if selected_square is not None or dragging_square is not None:
-                    source = dragging_square if dragging_square is not None else selected_square
-                    candidate = chess.Move(source, square)
-                    promo = chess.Move(source, square, promotion=chess.QUEEN)
-                    if candidate in board.legal_moves or promo in board.legal_moves:
-                        center = (col*SQUARE_SIZE + SQUARE_SIZE//2, row*SQUARE_SIZE + SQUARE_SIZE//2)
-                        pygame.draw.circle(screen, (100, 100, 100, 100), center, SQUARE_SIZE//6)
-
-            # Draw Pieces
-            piece = board.piece_at(square)
-            
-            # If there is a premove, show the board AS IF the move happened
-            if premove and square == premove.to_square:
-                # Show the piece that moved here
-                p_moved = board.piece_at(premove.from_square)
-                if p_moved:
-                    screen.blit(pieces[p_moved.symbol()], (col*SQUARE_SIZE, row*SQUARE_SIZE))
-            elif premove and square == premove.from_square:
-                # Show nothing here (it moved away)
-                pass
-            elif piece and square != dragging_square:
-                screen.blit(pieces[piece.symbol()], (col*SQUARE_SIZE, row*SQUARE_SIZE))
-
-    # Draw Dragging Piece
-    if dragging_square is not None and dragging_piece:
-        x, y = mouse_pos
-        screen.blit(pieces[dragging_piece.symbol()], (x - SQUARE_SIZE//2, y - SQUARE_SIZE//2))
-
-    # Draw Promotion Menu
-    if promotion_pending:
-        draw_promotion_menu()
-
-def draw_promotion_menu():
-    target_sq = promotion_move_end
-    col = chess.square_file(target_sq)
-    row = 7 - chess.square_rank(target_sq)
-    menu_rect = pygame.Rect(col*SQUARE_SIZE, row*SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE*4)
-    if row > 4: menu_rect.y -= SQUARE_SIZE * 3
-        
-    pygame.draw.rect(screen, PROMOTION_BG_COLOR, menu_rect)
-    pygame.draw.rect(screen, (0,0,0), menu_rect, 2)
-
-    opts = ['q', 'r', 'b', 'n'] if promotion_color == chess.BLACK else ['Q', 'R', 'B', 'N']
-    for i, p_char in enumerate(opts):
-        y_offset = menu_rect.y + (i * SQUARE_SIZE)
-        screen.blit(pieces[p_char], (menu_rect.x, y_offset))
-        if i < 3:
-            pygame.draw.line(screen, (0,0,0), (menu_rect.x, y_offset + SQUARE_SIZE), (menu_rect.right, y_offset + SQUARE_SIZE))
-
-def handle_promotion_click(pos):
-    global promotion_pending, promotion_move_start, promotion_move_end
-    target_sq = promotion_move_end
-    col = chess.square_file(target_sq)
-    row = 7 - chess.square_rank(target_sq)
-    base_x = col * SQUARE_SIZE
-    base_y = row * SQUARE_SIZE
-    if row > 4: base_y -= SQUARE_SIZE * 3
-    rel_y = pos[1] - base_y
-    idx = rel_y // SQUARE_SIZE
-    
-    if 0 <= idx <= 3 and base_x <= pos[0] <= base_x + SQUARE_SIZE:
-        choices = [chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT]
-        final_move = chess.Move(promotion_move_start, promotion_move_end, promotion=choices[int(idx)])
-        handle_move_input(final_move)
-        promotion_pending = False
-        promotion_move_start = None
-        promotion_move_end = None
-        return True
-    return False
-
-def handle_move_input(move):
-    """
-    Decides if the move is played immediately (My Turn)
-    or stored as a Premove (Opponent's Turn).
-    """
-    global premove, selected_square
-    
-    # 1. If it is human(you|me) turn (White):
-    if board.turn == chess.WHITE:
-        if move in board.legal_moves:
-            board.push(move)
-            print(f"You played:   {move.uci()}")
-            selected_square = None
-            premove = None # Clear any old premove
-            if not board.is_game_over():
-                trigger_engine()
+    def play_sound_for_move(self, move):
+        if self.board.is_checkmate():
+            self.sound.play('end')
+        elif self.board.is_check():
+            self.sound.play('check')
+        elif self.board.is_capture(move):
+            self.sound.play('capture')
         else:
-            print("Illegal move!")
-            selected_square = None
+            self.sound.play('move')
 
-    # If it is ENGINE'S turn (Black): premove Logic
-    else:
-        piece = board.piece_at(move.from_square)
-        if piece and piece.color == chess.WHITE:
+    def push_move(self, move):
+        if move in self.board.legal_moves:
+            is_cap = self.board.is_capture(move)
+            self.board.push(move)
+            
+            if self.board.is_game_over(): self.sound.play('end')
+            elif self.board.is_check(): self.sound.play('check')
+            elif is_cap: self.sound.play('capture')
+            else: self.sound.play('move')
+            
+            return True
+        return False
+
+    def handle_human_move(self, move):
+        if self.push_move(move):
+            print(f"You played: {move.uci()}")
+            self.premove = None
+            if not self.board.is_game_over():
+                self.trigger_engine()
+        else:
+            print("Illegal Move")
+
+    def handle_premove(self, move):
+        p = self.board.piece_at(move.from_square)
+        if p and p.color == chess.WHITE:
+            self.premove = move
             print(f"Premove stored: {move.uci()}")
-            premove = move
-            selected_square = None
 
-def trigger_engine():
-    global engine_thread
-    if not (engine_thread and engine_thread.is_alive()):
-        engine_thread = threading.Thread(target=run_engine_task, args=(board.copy(),), daemon=True)
-        engine_thread.start()
+    def trigger_engine(self):
+        if not self.engine_thinking:
+            self.engine_thinking = True
+            threading.Thread(target=self.engine_task, args=(self.board.copy(),), daemon=True).start()
 
-def run_engine_task(current_board):
-    try:
-        best_move = engine.search_best_move(current_board)
-        if isinstance(best_move, tuple): best_move = best_move[0]
-        if best_move:
-            pygame.event.post(pygame.event.Event(ENGINE_MOVE_EVENT, {"move": best_move}))
-    except Exception as e:
-        print(f"Engine Error: {e}")
+    def engine_task(self, board_copy):
+        try:
+            best_move = self.engine.search_best_move(board_copy)
+            pygame.event.post(pygame.event.Event(self.ENGINE_MOVE_EVENT, {"move": best_move}))
+        except Exception as e:
+            print(f"Engine Exception: {e}")
 
-# #----------------#
-# | Main Game Loop |
-# #----------------#
-running = True
-clock = pygame.time.Clock()
-
-while running:
-    mouse_pos = pygame.mouse.get_pos()
-    draw_board()
-    pygame.display.flip()
-    clock.tick(60)
-
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            engine.stop()
-            running = False
-
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            if promotion_pending:
-                handle_promotion_click(event.pos)
-                continue
+    def run(self):
+        running = True
+        while running:
+            self.clock.tick(60)
+            self.draw()
             
-            if premove:
-                premove = None
-                selected_square = None
-                
-            square = get_square_under_mouse(event.pos)
-            if square is None: continue
-
-            piece = board.piece_at(square)
-            
-            # Allow selecting White pieces even if it is Black's turn (for Premove)
-            if piece and piece.color == chess.WHITE:
-                dragging_square = square
-                dragging_piece = piece
-                selected_square = square
-            
-            elif selected_square is not None:
-                # Promotion Check logic duplicated for click-click
-                is_promo = False
-                p = board.piece_at(selected_square)
-                if p and p.piece_type == chess.PAWN:
-                    if (chess.square_rank(square) == 7):
-                        is_promo = True
-                
-                if is_promo:
-                    promotion_pending = True
-                    promotion_move_start = selected_square
-                    promotion_move_end = square
-                    promotion_color = chess.WHITE
-                else:
-                    move = chess.Move(selected_square, square)
-                    handle_move_input(move) 
-
-        elif event.type == pygame.MOUSEBUTTONUP:
-            if dragging_square is not None:
-                target_square = get_square_under_mouse(event.pos)
-                if target_square is not None and target_square != dragging_square:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.engine.stop()
+                    running = False
                     
-                    # Drag-Drop Move
-                    is_promo = False
-                    p = board.piece_at(dragging_square)
-                    if p and p.piece_type == chess.PAWN:
-                        if (chess.square_rank(target_square) == 7):
-                            is_promo = True
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    pos = pygame.mouse.get_pos()
                     
-                    if is_promo:
-                        promotion_pending = True
-                        promotion_move_start = dragging_square
-                        promotion_move_end = target_square
-                        promotion_color = chess.WHITE
-                    else:
-                        move = chess.Move(dragging_square, target_square)
-                        handle_move_input(move)
+                    if self.promotion_state:
+                        start, end, color = self.promotion_state
+                        col = chess.square_file(end)
+                        base_y = 0 if chess.square_rank(end) == 7 else 4*SQUARE_SIZE
+                        
+                        if col*SQUARE_SIZE <= pos[0] <= (col+1)*SQUARE_SIZE:
+                             idx = (pos[1] - base_y) // SQUARE_SIZE
+                             if 0 <= idx <= 3:
+                                 opts = [chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT]
+                                 move = chess.Move(start, end, promotion=opts[int(idx)])
+                                 self.promotion_state = None
+                                 self.handle_human_move(move)
+                        continue
 
-                dragging_square = None
-                dragging_piece = None
+                    sq = self.get_square_at(pos)
+                    if sq is not None:
+                        piece = self.board.piece_at(sq)
+                        
+                        if piece and piece.color == chess.WHITE:
+                            self.dragging_sq = sq
+                            self.selected_sq = sq
+                            if self.board.turn == chess.WHITE: self.premove = None
+                        
+                        elif self.selected_sq is not None:
+                            selected_piece = self.board.piece_at(self.selected_sq)
+                            if selected_piece and selected_piece.piece_type == chess.PAWN and \
+                               (chess.square_rank(sq) == 7 or chess.square_rank(sq) == 0):
+                                   pseudo = chess.Move(self.selected_sq, sq, promotion=chess.QUEEN)
+                                   if pseudo in self.board.legal_moves or (self.board.turn == chess.BLACK and self.board.piece_at(self.selected_sq).color == chess.WHITE):
+                                       self.promotion_state = (self.selected_sq, sq, chess.WHITE)
+                                       self.dragging_sq = None
+                                       continue
 
-        elif event.type == ENGINE_MOVE_EVENT:
-            move = event.move
-            if move in board.legal_moves:
-                board.push(move)
-                print(f"Engine plays: {move.uci()}")
-                
-                # PREMOVE EXECUTION 
-                if premove:
-                    # Is the premove legal?
-                    if premove in board.legal_moves:
-                        print(f"Premove EXECUTED: {premove.uci()}")
-                        board.push(premove)
-                        premove = None
-                        if not board.is_game_over():
-                            trigger_engine()
-                    else:
-                        print(f"Premove {premove.uci()} is ILLEGAL now. Cancelled.")
-                        premove = None
-            
-            if board.is_game_over():
-                game_over = True
-                print("Game Over:", board.result())
+                            move = chess.Move(self.selected_sq, sq)
+                            if self.board.turn == chess.WHITE:
+                                self.handle_human_move(move)
+                            else:
+                                self.handle_premove(move)
+                            
+                            self.selected_sq = None
+                            self.dragging_sq = None
 
-pygame.quit()
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    if self.dragging_sq is not None:
+                        target = self.get_square_at(pygame.mouse.get_pos())
+                        if target is not None and target != self.dragging_sq:
+                            
+                            is_pawn = self.board.piece_at(self.dragging_sq).piece_type == chess.PAWN
+                            is_promo_rank = chess.square_rank(target) in [0, 7]
+                            
+                            if is_pawn and is_promo_rank:
+                                self.promotion_state = (self.dragging_sq, target, chess.WHITE)
+                            else:
+                                move = chess.Move(self.dragging_sq, target)
+                                if self.board.turn == chess.WHITE:
+                                    self.handle_human_move(move)
+                                else:
+                                    self.handle_premove(move)
+                        
+                        self.dragging_sq = None
+
+                elif event.type == self.ENGINE_MOVE_EVENT:
+                    self.engine_thinking = False
+                    move = event.move
+                    if self.push_move(move):
+                        print(f"Engine plays: {move.uci()}")
+                        
+                        # Handle Premove
+                        if self.premove:
+                            if self.push_move(self.premove):
+                                print(f"Premove executed: {self.premove.uci()}")
+                                self.premove = None
+                                if not self.board.is_game_over():
+                                    self.trigger_engine()
+                            else:
+                                print("Premove illegal, cancelled.")
+                                self.premove = None
+                    
+                    if self.board.is_game_over():
+                        self.game_over = True
+                        print("Game Over")
+
+        pygame.quit()
+
+if __name__ == "__main__":
+    gui = ChessGUI()
+    gui.run()

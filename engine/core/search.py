@@ -3,8 +3,8 @@ import time
 import threading
 from collections import defaultdict
 from typing import Optional, Callable, List
-from engine.core.evaluator import Evaluator
-# from engine.core.evaluator_bitboard import BitboardEvaluator as Evaluator
+from engine.core.loopboard_evaluator import Evaluator
+# from engine.core.bitboard_evaluator import BitboardEvaluator as Evaluator
 from engine.core.transposition import TranspositionTable
 
 INF = 1000000
@@ -133,12 +133,20 @@ class SearchEngine:
 
     def _negamax(self, board: chess.Board, depth: int, alpha: int, beta: int, ply: int) -> int:
         self.nodes += 1
+        if board.can_claim_draw():
+            current_eval = self.evaluator.evaluate(board)
+            if current_eval > 50:
+                return -50 
+            return 0 
         if self.nodes % 2048 == 0 and self._stop_event.is_set(): return 0
         if board.is_fivefold_repetition(): return 0
+
+        alpha_orig = alpha
 
         # TT Lookup
         tt_entry = self.tt.get(board)
         tt_move = None
+        
         if tt_entry and tt_entry.depth >= depth:
             if tt_entry.flag == TT_EXACT: return tt_entry.value
             elif tt_entry.flag == TT_ALPHA: alpha = max(alpha, tt_entry.value)
@@ -153,6 +161,10 @@ class SearchEngine:
         if board.is_game_over():
             if board.is_checkmate(): return -MATE_SCORE + ply
             return 0
+        
+        has_big_pieces = any(board.pieces(pt,board.turn)
+                             for pt in [chess.KNIGHT, chess.BISHOP
+                                        , chess.ROOK, chess.QUEEN])
 
         # Null Move Pruning
         if depth >= 3 and not board.is_check() and ply > 0:
@@ -169,6 +181,8 @@ class SearchEngine:
             board.push(move)
             score = -self._negamax(board, depth - 1, -beta, -alpha, ply + 1)
             board.pop()
+            
+            if self._stop_event.is_set(): return 0
 
             if score > best_score:
                 best_score = score
@@ -182,7 +196,13 @@ class SearchEngine:
                     self.tt.store(board, depth, beta, TT_BETA, move)
                     return beta
 
-        flag = TT_ALPHA if best_score <= alpha else TT_EXACT
+        if best_score <= alpha_orig:
+            flag = TT_ALPHA  
+        elif best_score >= beta:
+            flag = TT_BETA  
+        else:
+            flag = TT_EXACT  
+
         self.tt.store(board, depth, best_score, flag, best_move_found)
         return best_score
 
