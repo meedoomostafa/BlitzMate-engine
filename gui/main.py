@@ -294,19 +294,14 @@ class ChessGUI:
             self.engine_thinking = True
             threading.Thread(target=self.engine_task, args=(self.board.copy(),), daemon=True).start()
 
-    def engine_task(self, board_copy):
-        try:
-            result = self.engine.search_best_move(board_copy)
-            if isinstance(result, tuple):
-                best_move = result[0]
-            else:
-                best_move = result 
-
-            if best_move:
-                pygame.event.post(pygame.event.Event(self.ENGINE_MOVE_EVENT, {"move": best_move}))
-                
-        except Exception as e:
-            print(f"Engine Exception: {e}")
+def run_engine_task(current_board):
+    try:
+        best_move = engine.search_best_move(current_board)
+        if isinstance(best_move, tuple): best_move = best_move[0]
+        if best_move:
+            pygame.event.post(pygame.event.Event(ENGINE_MOVE_EVENT, {"move": best_move}))
+    except Exception as e:
+        print(f"Engine Error: {e}")
 
     def run(self):
         running = True
