@@ -1,54 +1,139 @@
-# chess_engine/config.py
-from dataclasses import dataclass, field
-from typing import Dict, Any, Optional
 import os
-import tomllib  # python >=3.11; if not available use toml package
+import tomllib  # For Python 3.11+, use 'import toml' if older
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 
-# Defaults (centipawns)
+# --- Backward Compatibility for old imports ---
 PIECE_VALUES = {
-    "PAWN": 100,
-    "KNIGHT": 320,
-    "BISHOP": 330,
-    "ROOK": 500,
-    "QUEEN": 900,
-    "KING": 20000,
+    "PAWN": 100, "KNIGHT": 320, "BISHOP": 330, 
+    "ROOK": 500, "QUEEN": 900, "KING": 20000
 }
+
+# --- Configuration Classes ---
 
 @dataclass
 class SearchConfig:
-    depth: int = 4
+    depth: int = 5
     iterative_deepening: bool = True
-    time_limit_ms: Optional[int] = None  # None means depth-only
+    time_limit_ms: Optional[int] = None
     hash_size_mb: int = 64
     threads: int = 1
     use_quiescence: bool = True
     q_max_depth: int = 64
     use_null_move: bool = True
     null_move_reduction: int = 2
-    randomize_ties: float = 0.06  # probability to break ties randomly
 
 @dataclass
 class EvalConfig:
-    piece_values: Dict[str, int] = field(default_factory=lambda: PIECE_VALUES.copy())
     use_positional: bool = True
-    positional_table_path: Optional[str] = None  # file path if you store PST externally
-    mobility_weights: Dict[str, float] = field(default_factory=lambda: {
-        "PAWN": 5.0, "KNIGHT": 15.0, "BISHOP": 15.0, "ROOK": 8.0, "QUEEN": 10.0, "KING": 3.0
+    
+    # Material Values [MiddleGame, EndGame]
+    MATERIAL_MG: Dict[str, int] = field(default_factory=lambda: {
+        "PAWN": 100, "KNIGHT": 320, "BISHOP": 330, "ROOK": 500, "QUEEN": 900, "KING": 0
     })
-    threat_attack_weights: Dict[str, int] = field(default_factory=lambda: {
-        "PAWN": 25, "KNIGHT": 50, "BISHOP": 50, "ROOK": 80, "QUEEN": 140
+    MATERIAL_EG: Dict[str, int] = field(default_factory=lambda: {
+        "PAWN": 120, "KNIGHT": 280, "BISHOP": 300, "ROOK": 550, "QUEEN": 950, "KING": 0
     })
-    pawn_structure_weights: Dict[str, int] = field(default_factory=lambda: {
-        "doubled_penalty": 30, "isolated_penalty": 20, "passed_bonus": 50
-    })
-    king_safety_weights: Dict[str, float] = field(default_factory=lambda: {
-        "pawn_shield_factor": 0.15, "attacker_base": 1.0, "defender_base": 0.7
-    })
+
+    # Piece-Square Tables 
+    PST_KNIGHT_MG: List[int] = field(default_factory=lambda: [
+        -50,-40,-30,-30,-30,-30,-40,-50,
+        -40,-20,  0,  0,  0,  0,-20,-40,
+        -30,  0, 10, 15, 15, 10,  0,-30,
+        -30,  5, 15, 20, 20, 15,  5,-30,
+        -30,  0, 15, 20, 20, 15,  0,-30,
+        -30,  5, 10, 15, 15, 10,  5,-30,
+        -40,-20,  0,  5,  5,  0,-20,-40,
+        -50,-40,-30,-30,-30,-30,-40,-50
+    ])
+    
+    PST_KING_MG: List[int] = field(default_factory=lambda: [
+         20, 30, 10,  0,  0, 10, 30, 20,
+         20, 20,  0,  0,  0,  0, 20, 20,
+        -10,-20,-20,-20,-20,-20,-20,-10,
+        -20,-30,-30,-40,-40,-30,-30,-20,
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -30,-40,-40,-50,-50,-40,-40,-30
+    ])
+
+    PST_KING_EG: List[int] = field(default_factory=lambda: [
+        -50,-40,-30,-20,-20,-30,-40,-50,
+        -30,-20,-10,  0,  0,-10,-20,-30,
+        -30,-10, 20, 30, 30, 20,-10,-30,
+        -30,-10, 30, 40, 40, 30,-10,-30,
+        -30,-10, 30, 40, 40, 30,-10,-30,
+        -30,-10, 20, 30, 30, 20,-10,-30,
+        -30,-30,  0,  0,  0,  0,-30,-30,
+        -50,-30,-30,-30,-30,-30,-30,-50
+    ])
+    PST_PAWN_MG: List[int] = field(default_factory=lambda: [
+         0,  0,  0,  0,  0,  0,  0,  0,
+        50, 50, 50, 50, 50, 50, 50, 50,
+        10, 10, 20, 30, 30, 20, 10, 10,
+         5,  5, 10, 25, 25, 10,  5,  5,
+         0,  0,  0, 20, 20,  0,  0,  0,
+         5, -5,-10,  0,  0,-10, -5,  5,
+         5, 10, 10,-20,-20, 10, 10,  5,
+         0,  0,  0,  0,  0,  0,  0,  0
+    ])
+
+    PST_PAWN_EG: List[int] = field(default_factory=lambda: [
+         0,  0,  0,  0,  0,  0,  0,  0,
+        80, 80, 80, 80, 80, 80, 80, 80,
+        50, 50, 50, 50, 50, 50, 50, 50,
+        30, 30, 30, 30, 30, 30, 30, 30,
+        20, 20, 20, 20, 20, 20, 20, 20,
+        10, 10, 10, 10, 10, 10, 10, 10,
+        10, 10, 10, 10, 10, 10, 10, 10,
+         0,  0,  0,  0,  0,  0,  0,  0
+    ])
+
+    # BISHOP PST: Avoids corners and edges, loves long diagonals
+    PST_BISHOP_MG: List[int] = field(default_factory=lambda: [
+        -20,-10,-10,-10,-10,-10,-10,-20,
+        -10,  0,  0,  0,  0,  0,  0,-10,
+        -10,  0,  5, 10, 10,  5,  0,-10,
+        -10,  5,  5, 10, 10,  5,  5,-10,
+        -10,  0, 10, 10, 10, 10,  0,-10,
+        -10, 10, 10, 10, 10, 10, 10,-10,
+        -10,  5,  0,  0,  0,  0,  5,-10,
+        -20,-10,-10,-10,-10,-10,-10,-20
+    ])
+    
+    # ROOK PST: Loves the 7th rank and center files
+    PST_ROOK_MG: List[int] = field(default_factory=lambda: [
+         0,  0,  0,  0,  0,  0,  0,  0,
+         5, 10, 10, 10, 10, 10, 10,  5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+         5, 10, 10, 10, 10, 10, 10,  5,
+         0,  0,  0,  5,  5,  0,  0,  0
+    ])
+    
+    PST_QUEEN_MG: List[int] = field(default_factory=lambda: [
+        -20,-10,-10, -5, -5,-10,-10,-20,
+        -10,  0,  0,  0,  0,  0,  0,-10,
+        -10,  0,  5,  5,  5,  5,  0,-10,
+         -5,  0,  5,  5,  5,  5,  0, -5,
+          0,  0,  5,  5,  5,  5,  0, -5,
+        -10,  5,  5,  5,  5,  5,  0,-10,
+        -10,  0,  5,  0,  0,  0,  0,-10,
+        -20,-10,-10, -5, -5,-10,-10,-20
+    ])
+
+    BISHOP_PAIR_BONUS: int = 50
+    ROOK_OPEN_FILE_BONUS: int = 25
+    PASSED_PAWN_BONUS: List[int] = field(default_factory=lambda: [0, 10, 20, 30, 50, 80, 120, 0])
+    ISOLATED_PAWN_PENALTY: int = -20
+    DOUBLED_PAWN_PENALTY: int = -20
 
 @dataclass
 class AnalyzerConfig:
-    # thresholds in centipawns (positive = loss relative to best)
-    TH_BRILLIANT: int = -50   # if player's move is better than engine best by >= 50cp
+    TH_BRILLIANT: int = -50
     TH_BEST: int = 50
     TH_GOOD: int = 150
     TH_INACCURACY: int = 300
@@ -56,12 +141,10 @@ class AnalyzerConfig:
 
 @dataclass
 class UIConfig:
-    engine_name: str = "MyEngine"
+    engine_name: str = "BlitzMate"
     engine_author: str = "Medo"
     enable_uci: bool = True
     uci_threads: int = 1
-    uci_hash_mb: int = 64
-    api_port: int = 8000
 
 @dataclass
 class Config:
@@ -69,42 +152,20 @@ class Config:
     eval: EvalConfig = field(default_factory=EvalConfig)
     analyzer: AnalyzerConfig = field(default_factory=AnalyzerConfig)
     ui: UIConfig = field(default_factory=UIConfig)
-    log_level: str = "INFO"
-    cache_enabled: bool = True
-    cache_path: str = ".cache/tt.pickle"
 
     @staticmethod
     def load_from_toml(path: str = "config.toml") -> "Config":
         cfg = Config()
         if not os.path.exists(path):
             return cfg
-        with open(path, "rb") as f:
-            raw = tomllib.load(f)
-        # naive merge; you can improve by mapping nested dicts to dataclasses
-        if "search" in raw:
-            for k,v in raw["search"].items():
-                if hasattr(cfg.search, k):
-                    setattr(cfg.search, k, v)
-        if "eval" in raw:
-            for k,v in raw["eval"].items():
-                if hasattr(cfg.eval, k):
-                    setattr(cfg.eval, k, v)
-        if "analyzer" in raw:
-            for k,v in raw["analyzer"].items():
-                if hasattr(cfg.analyzer, k):
-                    setattr(cfg.analyzer, k, v)
-        if "ui" in raw:
-            for k,v in raw["ui"].items():
-                if hasattr(cfg.ui, k):
-                    setattr(cfg.ui, k, v)
+        try:
+            with open(path, "rb") as f:
+                raw = tomllib.load(f)
+            if "search" in raw:
+                for k,v in raw["search"].items():
+                    if hasattr(cfg.search, k): setattr(cfg.search, k, v)
+        except Exception as e:
+            print(f"Warning: Could not load config.toml: {e}")
         return cfg
 
-# single globally importable config instance
-CONFIG = Config.load_from_toml(os.environ.get("ENGINE_CONFIG_TOML", "config.toml"))
-# allow env override of depth for quick debugging
-try:
-    override_depth = os.environ.get("ENGINE_SEARCH_DEPTH")
-    if override_depth:
-        CONFIG.search.depth = int(override_depth)
-except Exception:
-    pass
+CONFIG = Config.load_from_toml()
