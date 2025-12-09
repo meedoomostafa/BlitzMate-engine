@@ -1,10 +1,12 @@
 import chess
+from chess import polyglot
 import time
 import threading
+import os
 from collections import defaultdict
 from typing import Optional, Callable, List
-from engine.core.loopboard_evaluator import Evaluator
-# from engine.core.bitboard_evaluator import BitboardEvaluator as Evaluator
+# from engine.core.loopboard_evaluator import Evaluator
+from engine.core.bitboard_evaluator import BitboardEvaluator as Evaluator
 from engine.core.transposition import TranspositionTable
 
 INF = 1000000
@@ -23,10 +25,39 @@ class SearchEngine:
         
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
-        self.nodes = 0 
+        self.nodes = 0
+         
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        assets_dir = os.path.join(base_dir, "../../gui/assets")
+        self.book_paths = [
+            os.path.join(assets_dir, "Titans.bin"),
+            os.path.join(assets_dir, "gm2600.bin"),
+            os.path.join(assets_dir, "komodo.bin"),
+            os.path.join(assets_dir, "rodent.bin"),
+            os.path.join(assets_dir, "Human.bin")
+        ]
+        
+        
+    def get_book_move(self, board:chess.Board)-> Optional[chess.Move]:
+        """Check if the current position is in the opening book."""
+        for book_path in self.book_paths:
+            if os.path.exists(book_path):
+                try:
+                    with polyglot.open_reader(book_path) as reader:
+                        entry = reader.weighted_choice(board)
+                        print(f"[{os.path.basename(book_path)}] Book Move: {entry.move.uci()}")
+                        return entry.move
+                except:
+                    continue
+        return None
 
     def search_best_move(self, board: chess.Board) -> Optional[chess.Move]:
         self._stop_event.clear()
+        
+        book_move = self.get_book_move(board)
+        if book_move:
+            return book_move,None
+        
         self.nodes = 0
         search_board = board.copy()
         best_move = None
@@ -239,6 +270,9 @@ class SearchEngine:
 
     def _mvv_lva(self, board, move):
         attacker = board.piece_at(move.from_square)
-        victim = board.piece_at(move.to_square)
-        if not attacker or not victim: return 0
-        return (victim.piece_type * 10) - attacker.piece_type
+        if board.is_en_passant(move):
+            victim_type = chess.PAWN
+        else:
+            victim = board.piece_at(move.to_square)
+            victim_type = victim.piece_type if victim else None
+        return (victim_type * 10) - attacker.piece_type
