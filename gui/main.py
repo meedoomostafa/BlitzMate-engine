@@ -296,8 +296,15 @@ class ChessGUI:
 
     def engine_task(self, board_copy):
         try:
-            best_move = self.engine.search_best_move(board_copy)
-            pygame.event.post(pygame.event.Event(self.ENGINE_MOVE_EVENT, {"move": best_move}))
+            result = self.engine.search_best_move(board_copy)
+            if isinstance(result, tuple):
+                best_move = result[0]
+            else:
+                best_move = result 
+
+            if best_move:
+                pygame.event.post(pygame.event.Event(self.ENGINE_MOVE_EVENT, {"move": best_move}))
+                
         except Exception as e:
             print(f"Engine Exception: {e}")
 
