@@ -8,6 +8,7 @@ from typing import Optional, Callable, List, Tuple
 # from engine.core.loopboard_evaluator import Evaluator
 from engine.core.bitboard_evaluator import BitboardEvaluator as Evaluator
 from engine.core.transposition import TranspositionTable
+from engine.core.utils import print_info
 
 INF = 1000000
 MATE_SCORE = 900000
@@ -22,6 +23,8 @@ class SearchEngine:
         self.max_depth = depth
         self.tt = TranspositionTable()
         self.history = defaultdict(lambda: defaultdict(int)) 
+        
+        self.killers = [[None] * 2 for _ in range(128)]
         
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -77,22 +80,13 @@ class SearchEngine:
             if entry and entry.best_move:
                 best_move = entry.best_move
             
-            elapsed = time.time() - start_time
             pv_moves = self._get_pv_line(search_board, d)
             if len(pv_moves) > 0: best_move = pv_moves[0]
             if len(pv_moves) > 1: ponder_move = pv_moves[1]
-            pv_str = " ".join([m.uci() for m in pv_moves])
-            
-            # Format score (cp or Mate)
-            if abs(score) > MATE_SCORE - 100:
-                mate_in = (MATE_SCORE - abs(score) + 1) // 2
-                score_str = f"mate {mate_in if score > 0 else -mate_in}"
-            else:
-                score_str = f"cp {score}"
 
-            print(f"info depth {d} score {score_str} nodes {self.nodes} time {int(elapsed*1000)} pv {pv_str}")
+            elapsed = time.time() - start_time
+            print_info(d, score, self.nodes, elapsed, pv_moves, ponder_move, MATE_SCORE)
 
-        print(f"bestmove {best_move.uci() if best_move else '(none)'} ponder {ponder_move.uci() if ponder_move else '(none)'}")
         return best_move, ponder_move
 
     def start_search(self, board: chess.Board, depth: Optional[int] = None, callback: Optional[Callable] = None):
@@ -125,15 +119,7 @@ class SearchEngine:
                 if len(pv_moves) > 1: ponder_move = pv_moves[1]
                 
                 elapsed = time.time() - start_time
-                pv_str = " ".join([m.uci() for m in pv_moves])
-                
-                if abs(score) > MATE_SCORE - 100:
-                    mate_in = (MATE_SCORE - abs(score) + 1) // 2
-                    score_str = f"mate {mate_in if score > 0 else -mate_in}"
-                else:
-                    score_str = f"cp {score}"
-
-                print(f"info depth {d} score {score_str} nodes {self.nodes} pv {pv_str}")
+                print_info(d, score, self.nodes, elapsed, pv_moves, ponder_move, MATE_SCORE)                
                 
                 if callback: callback(best_move, ponder_move, d, score)
             
@@ -216,13 +202,23 @@ class SearchEngine:
             board.pop()
             if score >= beta: return beta
 
-        moves = self._order_moves(board, tt_move)
+        moves = self._order_moves(board, tt_move, ply)
         best_score = -INF
         best_move_found = None
         
+        moves_searched = 0
+        
         for move in moves:
             board.push(move)
-            score = -self._negamax(board, depth - 1, -beta, -alpha, ply + 1)
+            moves_searched += 1
+            needs_full_search = True
+            if depth >= 3 and moves_searched > 4 and not board.is_capture(move) and not board.is_check():
+                score = -self._negamax(board, depth - 2, -alpha-1, -alpha, ply + 1)
+                needs_full_search = score > alpha
+                
+            if needs_full_search:
+                score = -self._negamax(board, depth - 1, -beta, -alpha, ply + 1)
+                
             board.pop()
             
             if self._stop_event.is_set(): return 0
@@ -235,6 +231,10 @@ class SearchEngine:
                 alpha = score
                 if not board.is_capture(move):
                     self.history[move.from_square][move.to_square] += depth * depth
+                    if move != self.killers[ply][0]:
+                        self.killers[ply][1] = self.killers[ply][0]
+                        self.killers[ply][0] = move
+                        
                 if alpha >= beta:
                     self.tt.store(board, depth, beta, TT_BETA, move)
                     return beta
@@ -251,8 +251,10 @@ class SearchEngine:
 
     def _quiescence(self, board: chess.Board, alpha: int, beta: int) -> int:
         if self._stop_event.is_set(): return 0
+        
         stand_pat = self.evaluator.evaluate(board)
         if stand_pat >= beta: return beta
+        if stand_pat < alpha - 900: return alpha
         if stand_pat > alpha: alpha = stand_pat
 
         moves = list(board.generate_legal_captures())
@@ -267,14 +269,18 @@ class SearchEngine:
             
         return alpha
 
-    def _order_moves(self, board: chess.Board, tt_move: Optional[chess.Move]):
+    def _order_moves(self, board: chess.Board, tt_move: Optional[chess.Move], ply: int):
         moves = list(board.legal_moves)
         scores = []
         for move in moves:
             if move == tt_move:
-                scores.append(1000000)
+                scores.append(2000000)
             elif board.is_capture(move):
-                scores.append(self._mvv_lva(board, move) + 10000)
+                scores.append(self._mvv_lva(board, move) + 100000)
+            elif move == self.killers[ply][0]:
+                scores.append(90000)
+            elif move == self.killers[ply][1]:
+                scores.append(80000)
             else:
                 scores.append(self.history[move.from_square][move.to_square])
         
