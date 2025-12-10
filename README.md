@@ -129,8 +129,8 @@ python -m interface.cli
 
 **Search Refinements**
 
-  * [ ] **Killer Heuristic:** Prioritize moves that caused cutoffs in sibling nodes.
-  * [ ] **Late Move Reduction (LMR):** Search less promising moves at reduced depth.
+  * [x] **Killer Heuristic:** Prioritize moves that caused cutoffs in sibling nodes.
+  * [x] **Late Move Reduction (LMR):** Search less promising moves at reduced depth.
 
 -----
 
