@@ -4,7 +4,7 @@ import time
 import threading
 import os
 from collections import defaultdict
-from typing import Optional, Callable, List
+from typing import Optional, Callable, List, Tuple
 # from engine.core.loopboard_evaluator import Evaluator
 from engine.core.bitboard_evaluator import BitboardEvaluator as Evaluator
 from engine.core.transposition import TranspositionTable
@@ -51,7 +51,7 @@ class SearchEngine:
                     continue
         return None
 
-    def search_best_move(self, board: chess.Board) -> Optional[chess.Move]:
+    def search_best_move(self, board: chess.Board) ->Tuple[Optional[chess.Move],Optional[chess.Move]]:
         self._stop_event.clear()
         
         book_move = self.get_book_move(board)
@@ -61,6 +61,7 @@ class SearchEngine:
         self.nodes = 0
         search_board = board.copy()
         best_move = None
+        ponder_move = None
         
         start_time = time.time()
 
@@ -78,6 +79,8 @@ class SearchEngine:
             
             elapsed = time.time() - start_time
             pv_moves = self._get_pv_line(search_board, d)
+            if len(pv_moves) > 0: best_move = pv_moves[0]
+            if len(pv_moves) > 1: ponder_move = pv_moves[1]
             pv_str = " ".join([m.uci() for m in pv_moves])
             
             # Format score (cp or Mate)
@@ -89,8 +92,8 @@ class SearchEngine:
 
             print(f"info depth {d} score {score_str} nodes {self.nodes} time {int(elapsed*1000)} pv {pv_str}")
 
-        print(f"bestmove {best_move.uci() if best_move else '(none)'}")
-        return best_move
+        print(f"bestmove {best_move.uci() if best_move else '(none)'} ponder {ponder_move.uci() if ponder_move else '(none)'}")
+        return best_move, ponder_move
 
     def start_search(self, board: chess.Board, depth: Optional[int] = None, callback: Optional[Callable] = None):
         if self._thread and self._thread.is_alive(): return 
@@ -98,8 +101,14 @@ class SearchEngine:
         target_depth = depth or self.max_depth
 
         def worker():
+            book_move = self.get_book_move(board)
+            if book_move: 
+                if callback: callback(book_move, None, 0, 0)
+                return
+            
             search_board = board.copy()
             best_move = None
+            ponder_move = None
             self.nodes = 0
             start_time = time.time()
 
@@ -111,8 +120,11 @@ class SearchEngine:
                 if entry: best_move = entry.best_move
                 
                 # Print to terminal for debugging
-                elapsed = time.time() - start_time
                 pv_moves = self._get_pv_line(search_board, d)
+                if len(pv_moves) > 0: best_move = pv_moves[0]
+                if len(pv_moves) > 1: ponder_move = pv_moves[1]
+                
+                elapsed = time.time() - start_time
                 pv_str = " ".join([m.uci() for m in pv_moves])
                 
                 if abs(score) > MATE_SCORE - 100:
@@ -122,10 +134,10 @@ class SearchEngine:
                     score_str = f"cp {score}"
 
                 print(f"info depth {d} score {score_str} nodes {self.nodes} pv {pv_str}")
-
-                if callback: callback(best_move, d, score)
+                
+                if callback: callback(best_move, ponder_move, d, score)
             
-            if callback: callback(best_move, -1, 0)
+            if callback: callback(best_move, ponder_move, -1, 0)
 
         self._thread = threading.Thread(target=worker, daemon=True)
         self._thread.start()

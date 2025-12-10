@@ -115,7 +115,7 @@ python -m interface.cli
 
 **GUI & Architecture**
 
-  * [ ] **Non-Blocking Architecture:** Migrate the engine to a background thread so the window stays responsive during calculations.
+  * [x] **Non-Blocking Architecture:** Migrate the engine to a background thread so the window stays responsive during calculations.
 
 **Optimization & Speed**
 
