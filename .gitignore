@@ -8,3 +8,10 @@ venv/
 .idea/
 .vscode/
 .DS_Store
+
+
+# syzygy
+wdl/
+dtz/
+*.rtbw
+*.rtbz
