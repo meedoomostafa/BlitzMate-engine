@@ -1,5 +1,6 @@
 import chess
 from chess import polyglot
+from chess import syzygy
 import time
 import threading
 import os
@@ -12,6 +13,7 @@ from engine.core.utils import print_info
 
 INF = 1000000
 MATE_SCORE = 900000
+TB_WIN_SCORE = 800000
 
 TT_EXACT = 0
 TT_ALPHA = 1
@@ -31,15 +33,24 @@ class SearchEngine:
         self.nodes = 0
          
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        assets_dir = os.path.join(base_dir, "../../gui/assets")
+        books_path = os.path.join(base_dir, "../assets/openings")
         self.book_paths = [
-            os.path.join(assets_dir, "Titans.bin"),
-            os.path.join(assets_dir, "gm2600.bin"),
-            os.path.join(assets_dir, "komodo.bin"),
-            os.path.join(assets_dir, "rodent.bin"),
-            os.path.join(assets_dir, "Human.bin")
+            os.path.join(books_path, "Titans.bin"),
+            os.path.join(books_path, "gm2600.bin"),
+            os.path.join(books_path, "komodo.bin"),
+            os.path.join(books_path, "rodent.bin"),
+            os.path.join(books_path, "Human.bin")
         ]
         
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        syzygy_path = os.path.join(base_dir, "../assets/syzygy/wdl")
+        self.tablebase = None
+        
+        if os.path.exists(syzygy_path):
+            try:
+                self.tablebase = chess.syzygy.open_tablebase(syzygy_path)
+            except:
+                pass
         
     def get_book_move(self, board:chess.Board)-> Optional[chess.Move]:
         """Check if the current position is in the opening book."""
@@ -53,13 +64,71 @@ class SearchEngine:
                 except:
                     continue
         return None
+    
+    def get_syzygy_move(self, board: chess.Board) -> Optional[chess.Move]:
+        """
+        Probes the Syzygy tablebase for the best move based on DTZ (Distance To Zero).
+        Returns None if TB is unavailable, piece count > 5, or probing fails.
+        """
+        if not self.tablebase or chess.popcount(board.occupied) >= 5 or board.castling_rights != 0:
+            return None
+
+        try:
+            root_wdl = self.tablebase.probe_wdl(board)
+        except:
+            return None
+
+        candidates = [] # List of tuples: (move, dtz_score)
+
+        for move in board.legal_moves:
+            board.push(move)
+            try:
+                outcome = self.tablebase.probe_wdl(board) 
+                
+                is_valid_transition = False
+                if root_wdl > 0:
+                    is_valid_transition = (outcome < 0)
+                elif root_wdl < 0:
+                    is_valid_transition = True # Already lost, just find the longest death
+                else:
+                    is_valid_transition = (outcome == 0)
+
+                if is_valid_transition:
+                    dtz = self.tablebase.probe_dtz(board)
+                    candidates.append((move, dtz))
+
+            except:
+                pass
+            
+            finally:
+                board.pop()
+
+        if not candidates:
+            return None
+
+        if root_wdl > 0: # Wining
+            candidates.sort(key=lambda x: x[1], reverse=True) 
+            
+        elif root_wdl < 0: # Losing
+            candidates.sort(key=lambda x: x[1], reverse=True)
+        
+        else: # Draw btw
+            candidates.sort(key=lambda x: abs(x[1]))
+
+        best_move = candidates[0][0]
+        print(f"[Syzygy] WDL: {root_wdl}, Best Move: {best_move}, DTZ(opp): {candidates[0][1]}")
+        return best_move
 
     def search_best_move(self, board: chess.Board) ->Tuple[Optional[chess.Move],Optional[chess.Move]]:
         self._stop_event.clear()
         
         book_move = self.get_book_move(board)
         if book_move:
-            return book_move,None
+            return book_move, None
+
+        tb_move = self.get_syzygy_move(board)
+        if tb_move:
+            return tb_move, None
         
         self.nodes = 0
         search_board = board.copy()
@@ -98,6 +167,11 @@ class SearchEngine:
             book_move = self.get_book_move(board)
             if book_move: 
                 if callback: callback(book_move, None, 0, 0)
+                return
+            
+            tb_move = self.get_syzygy_move(board)
+            if tb_move:
+                if callback: callback(tb_move, None, 0, 0)
                 return
             
             search_board = board.copy()
@@ -169,6 +243,16 @@ class SearchEngine:
             return 0 
         if self.nodes % 2048 == 0 and self._stop_event.is_set(): return 0
         if board.is_fivefold_repetition(): return 0
+        
+        if self.tablebase and board.castling_rights == 0:
+            if chess.popcount(board.occupied) <= 5:
+                try:
+                    wdl = self.tablebase.probe_wdl(board)
+                    if wdl > 0: return 800000 - ply  
+                    if wdl < 0: return -800000 + ply 
+                    return 0 
+                except:
+                    pass 
 
         alpha_orig = alpha
 
@@ -294,3 +378,7 @@ class SearchEngine:
             victim = board.piece_at(move.to_square)
             victim_type = victim.piece_type if victim else None
         return (victim_type * 10) - attacker.piece_type
+    
+    def close(self):
+        if self.tablebase:
+            self.tablebase.close()

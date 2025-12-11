@@ -125,7 +125,7 @@ python -m interface.cli
 **Knowledge**
 
   - [x] **Opening Book:** Integrate `chess.polyglot` to play standard openings (Sicilian, Queen's Gambit, etc.) instantly.
-  * [ ] **Endgame Tablebases:** Integrate Syzygy tablebases for perfect endgame play.
+  * [x] **Endgame Tablebases:** Integrate Syzygy tablebases for perfect endgame play.
 
 **Search Refinements**
 
