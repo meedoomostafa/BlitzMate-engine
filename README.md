@@ -25,6 +25,8 @@ The project is structured into three independent modules:
 The core decision-making process uses advanced algorithms to calculate the best move efficiently.
 
   * **Negamax with Alpha-Beta Pruning:** Efficiently prunes the search tree to ignore bad variations.
+  * **Principal Variation Search (PVS):** Optimizes search by assuming the first move is best, checking others with a zero window.
+  * **Late Move Reduction (LMR):** Search less promising moves at reduced depth to save time.
   * **Null Move Pruning (NMP):** Massively increases search depth by pruning branches where passing the turn is still winning.
   * **Quiescence Search:** Solves the "Horizon Effect" by searching violent moves (captures) beyond the target depth.
   * **Iterative Deepening:** Ensures the engine always has a "best move" ready, even if time runs out.
@@ -34,11 +36,12 @@ The core decision-making process uses advanced algorithms to calculate the best 
   * **Tapered Evaluation:** Interpolates between Middlegame and Endgame scores (e.g., King hides in middlegame, attacks in endgame).
   * **Piece-Square Tables (PST):** Complete tables for all pieces. The engine knows to centralize Knights/Bishops and put Rooks on open files.
   * **Threat Detection:** Static analysis prevents tactical blunders (like hanging pieces or moving a Queen to a square attacked by a Pawn).
-  * **Perspective Correction:** Fixed logic ensuring the engine evaluates positions relative to the side to move.
+  * **Bitboard Optimization:** Uses fast bitwise operations for analyzing Pawn Structures (Passers/Isolations).
 
 ### 🖥️ Modern GUI
 
   * **Drag & Drop:** Smooth piece movement mechanics.
+  * **Pondering Arrow:** Visualizes what the engine thinks *you* will play next.
   * **Visual Promotion:** Context menu for selecting Queen, Rook, Bishop, or Knight.
   * **Premove Support:** Allows players to input moves during the engine's turn.
 
@@ -51,7 +54,8 @@ The core decision-making process uses advanced algorithms to calculate the best 
 | File | Role | Description |
 | :--- | :--- | :--- |
 | **`search.py`** | The "Eyes" | Implements Negamax, NMP, and Move Ordering (MVV-LVA). |
-| **`evaluator.py`** | The "Brain" | Handles material counting, PST lookup, and threat assessment. |
+| **`bitboard_evaluator.py`** | The "Brain" | Handles material counting, PST lookup, and bitwise structure assessment. |
+| **`loopboard_evaluator.py`** | The "Brain" | Handles material counting, PST lookup, with looping approach. |
 | **`transposition.py`** | The "Memory"| Uses Zobrist Hashing (Polyglot) for $O(1)$ state lookups. |
 | **`config.py`** | Settings | Centralized configuration for search depth, hash size, and weights. |
 
@@ -67,17 +71,24 @@ The core decision-making process uses advanced algorithms to calculate the best 
 ### Setup Guide
 
 ```bash
-# Clone the repository
-git clone https://github.com/meedoomostafa/BlitzMate-engine.git
+# 1. Clone the repository
+git clone [https://github.com/meedoomostafa/BlitzMate-engine.git](https://github.com/meedoomostafa/BlitzMate-engine.git)
 cd BlitzMate-engine
 
-# Create virtual environment
+# 2. Create virtual environment 
 python3.13 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install dependencies
 pip install --upgrade pip
-pip install -r requirements.txt
+
+# Install requirements for each module separately
+pip install -r engine/requirements.txt
+pip install -r gui/requirements.txt
+pip install -r interface/requirements.txt
+
+# 5. Download Tablebases (Critical for Endgame but optional)
+# This script downloads ~500MB of Syzygy endgame data automatically
+python setup_syzygy.py
 ```
 
 -----
@@ -89,7 +100,7 @@ pip install -r requirements.txt
 This launches the graphical board with **Depth 5** search enabled by default.
 
 ```bash
-cd chess_engine  # Run from root folder
+# from the root folder (BlitzMate-engine)
 python -m gui.main
 ```
 
@@ -98,6 +109,8 @@ python -m gui.main
 For testing or debugging without graphics:
 
 ```bash
+# from the root folder (BlitzMate-engine) 
+# interface still not implemented
 python -m interface.cli
 ```
 
