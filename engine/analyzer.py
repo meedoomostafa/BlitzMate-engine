@@ -42,11 +42,11 @@ class Analyzer:
         player_is_white = board.turn == chess.WHITE
 
         # baseline eval before the move
-        old_eval = self.search_engine.evaluator.evaluate_board(board)  # centipawns
+        old_eval = self.search_engine.evaluator.evaluate(board)  # centipawns
 
         # get evaluation after the player's move
         board.push(move)
-        new_eval = self.search_engine.evaluator.evaluate_board(board)
+        new_eval = self.search_engine.evaluator.evaluate(board)
         is_checkmate = board.is_checkmate()
         board.pop()
 
@@ -55,7 +55,7 @@ class Analyzer:
         best_eval = best_score
         if best_move is not None:
             board.push(best_move)
-            best_eval_alt = self.search_engine.evaluator.evaluate_board(board)
+            best_eval_alt = self.search_engine.evaluator.evaluate(board)
             board.pop()
             # choose the search-reported best_score if it exists, otherwise fallback to evaluator after best_move
             # sometimes search returns deeper estimate; keep best_score (expected centipawns)
@@ -128,7 +128,7 @@ class Analyzer:
         report = []
         for mv_uci in moves:
             # compute engine best move at current position
-            best_move, best_score = self.search_engine.search_best_move(board)
+            best_move, _ponder, best_score = self.search_engine.search_best_move(board)
             # parse the player's move
             move = chess.Move.from_uci(mv_uci)
             # classify
