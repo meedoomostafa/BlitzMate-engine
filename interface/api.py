@@ -70,14 +70,16 @@ def search_move(req: SearchRequest = SearchRequest()):
         if board.is_game_over():
             raise HTTPException(status_code=400, detail="Game is already over")
         depth = req.depth or CONFIG.search.depth
-        engine.config.search.depth = depth
-        best, ponder, score = engine.search_best_move(board)
-        return {
-            "best_move": best.uci() if best else None,
-            "ponder": ponder.uci() if ponder else None,
-            "score": score,
-            "fen": board.fen(),
-        }
+        engine.max_depth = depth
+        search_board = board.copy()
+
+    best, ponder, score = engine.search_best_move(search_board)
+    return {
+        "best_move": best.uci() if best else None,
+        "ponder": ponder.uci() if ponder else None,
+        "score": score,
+        "fen": search_board.fen(),
+    }
 
 
 @app.post("/reset")
