@@ -156,16 +156,31 @@ class SearchEngine:
 
         start_time = time.time()
 
-        # Iterative Deepening
+        # Iterative Deepening with Aspiration Windows
+        ASPIRATION_WINDOW = 50
+        prev_score = 0
+
         for d in range(1, self.max_depth + 1):
             if self._stop_event.is_set():
                 break
 
-            # Run Search
-            score = self._negamax(search_board, d, -INF, INF, 0)
+            # Use aspiration windows from depth 4+
+            if d >= 4:
+                asp_alpha = prev_score - ASPIRATION_WINDOW
+                asp_beta = prev_score + ASPIRATION_WINDOW
+                score = self._negamax(search_board, d, asp_alpha, asp_beta, 0)
+
+                # Re-search with full window on fail
+                if not self._stop_event.is_set() and (
+                    score <= asp_alpha or score >= asp_beta
+                ):
+                    score = self._negamax(search_board, d, -INF, INF, 0)
+            else:
+                score = self._negamax(search_board, d, -INF, INF, 0)
             if self._stop_event.is_set():
                 break
             best_score = score
+            prev_score = score
 
             # Fetch Best Move
             entry = self.tt.get(search_board)
