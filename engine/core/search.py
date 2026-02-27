@@ -412,6 +412,19 @@ class SearchEngine:
         if qs_depth > 30:
             return self.evaluator.evaluate(board)
 
+        # TT probe in quiescence
+        tt_entry = self.tt.get(board)
+        if tt_entry and tt_entry.depth >= 0:
+            if tt_entry.flag == TT_EXACT:
+                return tt_entry.value
+            elif tt_entry.flag == TT_ALPHA:
+                beta = min(beta, tt_entry.value)
+            elif tt_entry.flag == TT_BETA:
+                alpha = max(alpha, tt_entry.value)
+            if alpha >= beta:
+                return tt_entry.value
+
+        alpha_orig = alpha
         in_check = board.is_check()
 
         if not in_check:
@@ -429,14 +442,32 @@ class SearchEngine:
 
         moves.sort(key=lambda m: self._mvv_lva(board, m), reverse=True)
 
+        best_score = alpha
+        best_move = None
+
         for move in moves:
             board.push(move)
             score = -self._quiescence(board, -beta, -alpha, qs_depth + 1)
             board.pop()
+            if score > best_score:
+                best_score = score
+                best_move = move
             if score >= beta:
+                if not self._stop_event.is_set():
+                    self.tt.store(board, 0, beta, TT_BETA, move)
                 return beta
             if score > alpha:
                 alpha = score
+
+        # Store quiescence result in TT
+        if not self._stop_event.is_set():
+            if best_score <= alpha_orig:
+                flag = TT_ALPHA
+            elif best_score >= beta:
+                flag = TT_BETA
+            else:
+                flag = TT_EXACT
+            self.tt.store(board, 0, best_score, flag, best_move)
 
         return alpha
 
