@@ -1,16 +1,16 @@
 from engine.core.board import ChessBoard
 from engine.core.search import SearchEngine
-from engine.core.loopboard_evaluator import Evaluator
+from engine.core.bitboard_evaluator import BitboardEvaluator
 
 
 class Engine:
     def __init__(self, depth=3):
         self.board = ChessBoard()
-        self.search = SearchEngine(Evaluator(), max_depth=depth)
+        self.search = SearchEngine(BitboardEvaluator(), depth=depth)
 
     def get_best_move(self):
-        move, value = self.search.find_best_move(self.board.board)
-        return move.uci(), value
+        move, ponder = self.search.search_best_move(self.board.board)
+        return move.uci() if move else None, ponder.uci() if ponder else None
 
     def make_move(self, move_uci: str):
         return self.board.make_move(move_uci)
