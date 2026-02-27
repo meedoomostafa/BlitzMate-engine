@@ -28,7 +28,7 @@ class SearchEngine:
         self.tt = TranspositionTable()
         self.history = defaultdict(lambda: defaultdict(int))
 
-        self.killers = [[None] * 2 for _ in range(128)]
+        self.killers = defaultdict(lambda: [None, None])
 
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -152,7 +152,7 @@ class SearchEngine:
             for to_sq in self.history[from_sq]:
                 self.history[from_sq][to_sq] //= 2
         # Reset killers
-        self.killers = [[None] * 2 for _ in range(128)]
+        self.killers = defaultdict(lambda: [None, None])
 
         start_time = time.time()
 
