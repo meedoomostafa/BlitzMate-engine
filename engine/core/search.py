@@ -361,9 +361,7 @@ class SearchEngine:
             board.push(move)
             moves_searched += 1
             needs_full_search = True
-            is_killer = (
-                move == self.killers[ply][0] or move == self.killers[ply][1]
-            )
+            is_killer = move == self.killers[ply][0] or move == self.killers[ply][1]
             if (
                 depth >= 3
                 and moves_searched > 4
