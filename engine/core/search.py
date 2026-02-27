@@ -325,13 +325,13 @@ class SearchEngine:
                 return -MATE_SCORE + ply
             return 0
 
-        has_big_pieces = any(
-            board.pieces(pt, board.turn)
+        big_piece_count = sum(
+            len(board.pieces(pt, board.turn))
             for pt in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]
         )
 
-        # Null Move Pruning (skip in pawn-only endgames to avoid zugzwang)
-        if depth >= 3 and not board.is_check() and ply > 0 and has_big_pieces:
+        # Null Move Pruning (skip in zugzwang-prone endgames: need ≥2 non-pawn pieces)
+        if depth >= 3 and not board.is_check() and ply > 0 and big_piece_count >= 2:
             board.push(chess.Move.null())
             score = -self._negamax(board, depth - 3, -beta, -beta + 1, ply + 1)
             board.pop()
@@ -350,7 +350,17 @@ class SearchEngine:
             board.push(move)
             moves_searched += 1
             needs_full_search = True
-            if depth >= 3 and moves_searched > 4 and not is_cap and not gives_check:
+            is_killer = (
+                move == self.killers[ply][0] or move == self.killers[ply][1]
+            )
+            if (
+                depth >= 3
+                and moves_searched > 4
+                and not is_cap
+                and not gives_check
+                and not move.promotion
+                and not is_killer
+            ):
                 score = -self._negamax(board, depth - 2, -alpha - 1, -alpha, ply + 1)
                 needs_full_search = score > alpha
 
