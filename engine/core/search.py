@@ -433,9 +433,10 @@ class SearchEngine:
             victim_type = chess.PAWN
         else:
             victim = board.piece_at(move.to_square)
-            victim_type = victim.piece_type if victim else None
-        return (victim_type * 10) - attacker.piece_type
-
+            victim_type = victim.piece_type if victim else chess.PAWN
+        attacker_type = attacker.piece_type if attacker else chess.PAWN
+        return (victim_type * 10) - attacker_type
+    
     def close(self):
         if self.tablebase:
             self.tablebase.close()
