@@ -610,38 +610,212 @@ class EvalConfig:
     )
 
     # Endgame PSTs
-    PST_BISHOP_EG: List[int] = field(default_factory=lambda: [
-        -20,-10,-10,-10,-10,-10,-10,-20,
-        -10,  0,  0,  0,  0,  0,  0,-10,
-        -10,  0, 10, 10, 10, 10,  0,-10,
-        -10,  0, 10, 15, 15, 10,  0,-10,
-        -10,  0, 10, 15, 15, 10,  0,-10,
-        -10,  0, 10, 10, 10, 10,  0,-10,
-        -10,  0,  0,  0,  0,  0,  0,-10,
-        -20,-10,-10,-10,-10,-10,-10,-20
-    ])
+    PST_BISHOP_EG: List[int] = field(
+        default_factory=lambda: [
+            -20,
+            -10,
+            -10,
+            -10,
+            -10,
+            -10,
+            -10,
+            -20,
+            -10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            -10,
+            -10,
+            0,
+            10,
+            10,
+            10,
+            10,
+            0,
+            -10,
+            -10,
+            0,
+            10,
+            15,
+            15,
+            10,
+            0,
+            -10,
+            -10,
+            0,
+            10,
+            15,
+            15,
+            10,
+            0,
+            -10,
+            -10,
+            0,
+            10,
+            10,
+            10,
+            10,
+            0,
+            -10,
+            -10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            -10,
+            -20,
+            -10,
+            -10,
+            -10,
+            -10,
+            -10,
+            -10,
+            -20,
+        ]
+    )
 
-    PST_ROOK_EG: List[int] = field(default_factory=lambda: [
-         0,  0,  0,  0,  0,  0,  0,  0,
-        10, 15, 15, 15, 15, 15, 15, 10,
-         0,  0,  0,  0,  0,  0,  0,  0,
-         0,  0,  0,  0,  0,  0,  0,  0,
-         0,  0,  0,  0,  0,  0,  0,  0,
-         0,  0,  0,  0,  0,  0,  0,  0,
-        10, 15, 15, 15, 15, 15, 15, 10,
-         0,  0,  0,  5,  5,  0,  0,  0
-    ])
+    PST_ROOK_EG: List[int] = field(
+        default_factory=lambda: [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            10,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            10,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            10,
+            0,
+            0,
+            0,
+            5,
+            5,
+            0,
+            0,
+            0,
+        ]
+    )
 
-    PST_QUEEN_EG: List[int] = field(default_factory=lambda: [
-        -20,-10,-10, -5, -5,-10,-10,-20,
-        -10,  0,  5,  5,  5,  5,  0,-10,
-        -10,  5, 10, 10, 10, 10,  5,-10,
-         -5,  5, 10, 15, 15, 10,  5, -5,
-         -5,  5, 10, 15, 15, 10,  5, -5,
-        -10,  5, 10, 10, 10, 10,  5,-10,
-        -10,  0,  5,  5,  5,  5,  0,-10,
-        -20,-10,-10, -5, -5,-10,-10,-20
-    ])
+    PST_QUEEN_EG: List[int] = field(
+        default_factory=lambda: [
+            -20,
+            -10,
+            -10,
+            -5,
+            -5,
+            -10,
+            -10,
+            -20,
+            -10,
+            0,
+            5,
+            5,
+            5,
+            5,
+            0,
+            -10,
+            -10,
+            5,
+            10,
+            10,
+            10,
+            10,
+            5,
+            -10,
+            -5,
+            5,
+            10,
+            15,
+            15,
+            10,
+            5,
+            -5,
+            -5,
+            5,
+            10,
+            15,
+            15,
+            10,
+            5,
+            -5,
+            -10,
+            5,
+            10,
+            10,
+            10,
+            10,
+            5,
+            -10,
+            -10,
+            0,
+            5,
+            5,
+            5,
+            5,
+            0,
+            -10,
+            -20,
+            -10,
+            -10,
+            -5,
+            -5,
+            -10,
+            -10,
+            -20,
+        ]
+    )
 
     BISHOP_PAIR_BONUS: int = 50
     ROOK_OPEN_FILE_BONUS: int = 25
@@ -679,7 +853,9 @@ class Config:
     @staticmethod
     def load_from_toml(path: str = None) -> "Config":
         if path is None:
-            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.toml")
+            path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "config.toml"
+            )
         cfg = Config()
         if not os.path.exists(path):
             return cfg
@@ -689,16 +865,20 @@ class Config:
             # Load all config sections
             if "search" in raw:
                 for k, v in raw["search"].items():
-                    if hasattr(cfg.search, k): setattr(cfg.search, k, v)
+                    if hasattr(cfg.search, k):
+                        setattr(cfg.search, k, v)
             if "eval" in raw:
                 for k, v in raw["eval"].items():
-                    if hasattr(cfg.eval, k): setattr(cfg.eval, k, v)
+                    if hasattr(cfg.eval, k):
+                        setattr(cfg.eval, k, v)
             if "analyzer" in raw:
                 for k, v in raw["analyzer"].items():
-                    if hasattr(cfg.analyzer, k): setattr(cfg.analyzer, k, v)
+                    if hasattr(cfg.analyzer, k):
+                        setattr(cfg.analyzer, k, v)
             if "ui" in raw:
                 for k, v in raw["ui"].items():
-                    if hasattr(cfg.ui, k): setattr(cfg.ui, k, v)
+                    if hasattr(cfg.ui, k):
+                        setattr(cfg.ui, k, v)
         except Exception as e:
             print(f"Warning: Could not load config.toml: {e}")
         return cfg

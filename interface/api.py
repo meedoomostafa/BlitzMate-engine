@@ -20,8 +20,10 @@ _board_lock = threading.Lock()
 class FenRequest(BaseModel):
     fen: str
 
+
 class MoveRequest(BaseModel):
     move: str  # UCI format e.g. "e2e4"
+
 
 class SearchRequest(BaseModel):
     depth: Optional[int] = None
@@ -35,7 +37,7 @@ def get_board():
             "turn": "white" if board.turn == chess.WHITE else "black",
             "legal_moves": [m.uci() for m in board.legal_moves],
             "is_game_over": board.is_game_over(),
-            "result": board.result() if board.is_game_over() else None
+            "result": board.result() if board.is_game_over() else None,
         }
 
 
@@ -74,7 +76,7 @@ def search_move(req: SearchRequest = SearchRequest()):
             "best_move": best.uci() if best else None,
             "ponder": ponder.uci() if ponder else None,
             "score": score,
-            "fen": board.fen()
+            "fen": board.fen(),
         }
 
 
@@ -84,4 +86,3 @@ def reset_board():
         board.reset()
         engine.tt.clear()
         return {"fen": board.fen()}
-

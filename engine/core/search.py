@@ -43,7 +43,7 @@ class SearchEngine:
             os.path.join(books_path, "rodent.bin"),
             os.path.join(books_path, "Human.bin"),
         ]
-        
+
         syzygy_path = os.path.join(base_dir, "../assets/syzygy")
         self.tablebase = None
 
@@ -73,7 +73,11 @@ class SearchEngine:
         Probes the Syzygy tablebase for the best move based on DTZ (Distance To Zero).
         Returns None if TB is unavailable, piece count > 5, or probing fails.
         """
-        if not self.tablebase or chess.popcount(board.occupied) > 5 or board.castling_rights != 0:
+        if (
+            not self.tablebase
+            or chess.popcount(board.occupied) > 5
+            or board.castling_rights != 0
+        ):
             return None
 
         try:
@@ -124,7 +128,9 @@ class SearchEngine:
         )
         return best_move
 
-    def search_best_move(self, board: chess.Board) ->Tuple[Optional[chess.Move],Optional[chess.Move], int]:
+    def search_best_move(
+        self, board: chess.Board
+    ) -> Tuple[Optional[chess.Move], Optional[chess.Move], int]:
         self._stop_event.clear()
 
         book_move = self.get_book_move(board)
@@ -134,20 +140,20 @@ class SearchEngine:
         tb_move = self.get_syzygy_move(board)
         if tb_move:
             return tb_move, None, 0
-        
+
         self.nodes = 0
         search_board = board.copy()
         best_move = None
         ponder_move = None
         best_score = 0
-        
+
         # Age history scores to prevent stale ordering
         for from_sq in self.history:
             for to_sq in self.history[from_sq]:
                 self.history[from_sq][to_sq] //= 2
         # Reset killers
         self.killers = [[None] * 2 for _ in range(128)]
-        
+
         start_time = time.time()
 
         # Iterative Deepening
@@ -157,9 +163,10 @@ class SearchEngine:
 
             # Run Search
             score = self._negamax(search_board, d, -INF, INF, 0)
-            if self._stop_event.is_set(): break
+            if self._stop_event.is_set():
+                break
             best_score = score
-            
+
             # Fetch Best Move
             entry = self.tt.get(search_board)
             if entry and entry.best_move:
@@ -286,11 +293,13 @@ class SearchEngine:
             if chess.popcount(board.occupied) <= 5:
                 try:
                     wdl = self.tablebase.probe_wdl(board)
-                    if wdl > 0: return 800000 - ply  
-                    if wdl < 0: return -800000 + ply 
-                    return 0 
+                    if wdl > 0:
+                        return 800000 - ply
+                    if wdl < 0:
+                        return -800000 + ply
+                    return 0
                 except Exception:
-                    pass 
+                    pass
 
         alpha_orig = alpha
 
@@ -299,12 +308,17 @@ class SearchEngine:
         tt_move = None
 
         if tt_entry and tt_entry.depth >= depth:
-            if tt_entry.flag == TT_EXACT: return tt_entry.value
-            elif tt_entry.flag == TT_ALPHA: beta = min(beta, tt_entry.value)
-            elif tt_entry.flag == TT_BETA: alpha = max(alpha, tt_entry.value)
-            if alpha >= beta: return tt_entry.value
-        
-        if tt_entry: tt_move = tt_entry.best_move
+            if tt_entry.flag == TT_EXACT:
+                return tt_entry.value
+            elif tt_entry.flag == TT_ALPHA:
+                beta = min(beta, tt_entry.value)
+            elif tt_entry.flag == TT_BETA:
+                alpha = max(alpha, tt_entry.value)
+            if alpha >= beta:
+                return tt_entry.value
+
+        if tt_entry:
+            tt_move = tt_entry.best_move
 
         if depth <= 0:
             return self._quiescence(board, alpha, beta)
@@ -340,7 +354,7 @@ class SearchEngine:
             moves_searched += 1
             needs_full_search = True
             if depth >= 3 and moves_searched > 4 and not is_cap and not gives_check:
-                score = -self._negamax(board, depth - 2, -alpha-1, -alpha, ply + 1)
+                score = -self._negamax(board, depth - 2, -alpha - 1, -alpha, ply + 1)
                 needs_full_search = score > alpha
 
             if needs_full_search:
@@ -377,18 +391,25 @@ class SearchEngine:
         self.tt.store(board, depth, best_score, flag, best_move_found)
         return best_score
 
-    def _quiescence(self, board: chess.Board, alpha: int, beta: int, qs_depth: int = 0) -> int:
+    def _quiescence(
+        self, board: chess.Board, alpha: int, beta: int, qs_depth: int = 0
+    ) -> int:
         self.nodes += 1
-        if self._stop_event.is_set(): return 0
-        if qs_depth > 30: return self.evaluator.evaluate(board)
-        
+        if self._stop_event.is_set():
+            return 0
+        if qs_depth > 30:
+            return self.evaluator.evaluate(board)
+
         in_check = board.is_check()
-        
+
         if not in_check:
             stand_pat = self.evaluator.evaluate(board)
-            if stand_pat >= beta: return beta
-            if stand_pat < alpha - 900: return alpha
-            if stand_pat > alpha: alpha = stand_pat
+            if stand_pat >= beta:
+                return beta
+            if stand_pat < alpha - 900:
+                return alpha
+            if stand_pat > alpha:
+                alpha = stand_pat
             moves = list(board.generate_legal_captures())
         else:
             # In check: must search all evasions, not just captures
@@ -435,7 +456,7 @@ class SearchEngine:
             victim_type = victim.piece_type if victim else chess.PAWN
         attacker_type = attacker.piece_type if attacker else chess.PAWN
         return (victim_type * 10) - attacker_type
-    
+
     def close(self):
         if self.tablebase:
             self.tablebase.close()
