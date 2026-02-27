@@ -43,8 +43,7 @@ class SearchEngine:
             os.path.join(books_path, "rodent.bin"),
             os.path.join(books_path, "Human.bin"),
         ]
-
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        
         syzygy_path = os.path.join(base_dir, "../assets/syzygy")
         self.tablebase = None
 
@@ -112,13 +111,11 @@ class SearchEngine:
         if not candidates:
             return None
 
-        if root_wdl > 0:  # Wining
+        if root_wdl > 0:  # Winning — pick fastest win (least negative DTZ)
             candidates.sort(key=lambda x: x[1], reverse=True)
-
-        elif root_wdl < 0:  # Losing
+        elif root_wdl < 0:  # Losing — pick slowest loss (largest DTZ)
             candidates.sort(key=lambda x: x[1], reverse=True)
-
-        else:  # Draw btw
+        else:  # Draw — stay closest to zero
             candidates.sort(key=lambda x: abs(x[1]))
 
         best_move = candidates[0][0]
@@ -160,6 +157,7 @@ class SearchEngine:
 
             # Run Search
             score = self._negamax(search_board, d, -INF, INF, 0)
+            if self._stop_event.is_set(): break
             best_score = score
             
             # Fetch Best Move
@@ -274,7 +272,7 @@ class SearchEngine:
         self, board: chess.Board, depth: int, alpha: int, beta: int, ply: int
     ) -> int:
         self.nodes += 1
-        if board.can_claim_draw():
+        if board.is_repetition(2) or board.halfmove_clock >= 100:
             current_eval = self.evaluator.evaluate(board)
             if current_eval > 50:
                 return -50
@@ -380,6 +378,7 @@ class SearchEngine:
         return best_score
 
     def _quiescence(self, board: chess.Board, alpha: int, beta: int, qs_depth: int = 0) -> int:
+        self.nodes += 1
         if self._stop_event.is_set(): return 0
         if qs_depth > 30: return self.evaluator.evaluate(board)
         
