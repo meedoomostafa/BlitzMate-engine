@@ -643,17 +643,28 @@ class Config:
     ui: UIConfig = field(default_factory=UIConfig)
 
     @staticmethod
-    def load_from_toml(path: str = "config.toml") -> "Config":
+    def load_from_toml(path: str = None) -> "Config":
+        if path is None:
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.toml")
         cfg = Config()
         if not os.path.exists(path):
             return cfg
         try:
             with open(path, "rb") as f:
                 raw = tomllib.load(f)
+            # Load all config sections
             if "search" in raw:
                 for k, v in raw["search"].items():
-                    if hasattr(cfg.search, k):
-                        setattr(cfg.search, k, v)
+                    if hasattr(cfg.search, k): setattr(cfg.search, k, v)
+            if "eval" in raw:
+                for k, v in raw["eval"].items():
+                    if hasattr(cfg.eval, k): setattr(cfg.eval, k, v)
+            if "analyzer" in raw:
+                for k, v in raw["analyzer"].items():
+                    if hasattr(cfg.analyzer, k): setattr(cfg.analyzer, k, v)
+            if "ui" in raw:
+                for k, v in raw["ui"].items():
+                    if hasattr(cfg.ui, k): setattr(cfg.ui, k, v)
         except Exception as e:
             print(f"Warning: Could not load config.toml: {e}")
         return cfg
