@@ -9,8 +9,8 @@ class Engine:
         self.search = SearchEngine(BitboardEvaluator(), depth=depth)
 
     def get_best_move(self):
-        move, ponder = self.search.search_best_move(self.board.board)
-        return move.uci() if move else None, ponder.uci() if ponder else None
+        move, ponder, score = self.search.search_best_move(self.board.board)
+        return move.uci() if move else None, ponder.uci() if ponder else None, score
 
     def make_move(self, move_uci: str):
         return self.board.make_move(move_uci)

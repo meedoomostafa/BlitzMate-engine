@@ -127,24 +127,23 @@ class SearchEngine:
         )
         return best_move
 
-    def search_best_move(
-        self, board: chess.Board
-    ) -> Tuple[Optional[chess.Move], Optional[chess.Move]]:
+    def search_best_move(self, board: chess.Board) ->Tuple[Optional[chess.Move],Optional[chess.Move], int]:
         self._stop_event.clear()
 
         book_move = self.get_book_move(board)
         if book_move:
-            return book_move, None
+            return book_move, None, 0
 
         tb_move = self.get_syzygy_move(board)
         if tb_move:
-            return tb_move, None
-
+            return tb_move, None, 0
+        
         self.nodes = 0
         search_board = board.copy()
         best_move = None
         ponder_move = None
-
+        best_score = 0
+        
         start_time = time.time()
 
         # Iterative Deepening
@@ -154,7 +153,8 @@ class SearchEngine:
 
             # Run Search
             score = self._negamax(search_board, d, -INF, INF, 0)
-
+            best_score = score
+            
             # Fetch Best Move
             entry = self.tt.get(search_board)
             if entry and entry.best_move:
@@ -169,7 +169,7 @@ class SearchEngine:
             elapsed = time.time() - start_time
             print_info(d, score, self.nodes, elapsed, pv_moves, ponder_move, MATE_SCORE)
 
-        return best_move, ponder_move
+        return best_move, ponder_move, best_score
 
     def start_search(
         self,
