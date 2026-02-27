@@ -26,6 +26,5 @@ print("Game Over")
 print(f"Result: {board.result()}")
 
 
-    # Optional: pause to follow moves easily
-    # input("Press Enter for next move...")
-
+# Optional: pause to follow moves easily
+# input("Press Enter for next move...")

@@ -3,12 +3,13 @@ import chess
 from typing import List, Dict, Any
 
 # thresholds in centipawns (integers). Tune these later.
-TH_BRILLIANT = -50    # if your move is better than best by >= 50cp => "Brilliant"
-TH_BEST = 50          # if within 50cp of best => "Best/Excellent"
-TH_GOOD = 150         # within 150cp => "Good"
-TH_INACCURACY = 300   # 150..300 => "Inaccuracy"
-TH_MISTAKE = 600      # 300..600 => "Mistake"
+TH_BRILLIANT = -50  # if your move is better than best by >= 50cp => "Brilliant"
+TH_BEST = 50  # if within 50cp of best => "Best/Excellent"
+TH_GOOD = 150  # within 150cp => "Good"
+TH_INACCURACY = 300  # 150..300 => "Inaccuracy"
+TH_MISTAKE = 600  # 300..600 => "Mistake"
 # > TH_MISTAKE => "Blunder"
+
 
 class Analyzer:
     def __init__(self, search_engine):
@@ -23,16 +24,22 @@ class Analyzer:
         """
         return value if player_is_white else -value
 
-    def classify_move(self, board: chess.Board, move: chess.Move, best_move: chess.Move, best_score: int) -> Dict[str, Any]:
+    def classify_move(
+        self,
+        board: chess.Board,
+        move: chess.Move,
+        best_move: chess.Move,
+        best_score: int,
+    ) -> Dict[str, Any]:
         """
-        Classify a single move. 
+        Classify a single move.
         - board: current board BEFORE the player's move (unchanged by this function).
         - move: the player's chosen move (chess.Move object).
         - best_move: engine's best move at this position (chess.Move or None).
         - best_score: engine's reported score for best_move in centipawns (positive=White better).
         Returns a dict with label, deltas and diagnostics.
         """
-        player_is_white = (board.turn == chess.WHITE)
+        player_is_white = board.turn == chess.WHITE
 
         # baseline eval before the move
         old_eval = self.search_engine.evaluator.evaluate_board(board)  # centipawns
@@ -66,7 +73,9 @@ class Analyzer:
         # SEE (static exchange evaluation) to detect bad captures
         see_value = None
         try:
-            see_value = board.see(move)  # returns material gain for side to move (centipawns-ish)
+            see_value = board.see(
+                move
+            )  # returns material gain for side to move (centipawns-ish)
         except Exception:
             see_value = None
 
@@ -107,7 +116,7 @@ class Analyzer:
             "improvement_vs_old": int(improvement_vs_old),
             "see": int(see_value) if see_value is not None else None,
             "label": label,
-            "player_is_white": player_is_white
+            "player_is_white": player_is_white,
         }
         return info
 

@@ -2,6 +2,7 @@
 
 import chess
 
+
 class ChessBoard:
     def __init__(self, fen: str = None):
         """

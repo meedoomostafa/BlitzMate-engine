@@ -2,6 +2,7 @@ from engine.core.board import ChessBoard
 from engine.core.search import SearchEngine
 from engine.core.loopboard_evaluator import Evaluator
 
+
 class Engine:
     def __init__(self, depth=3):
         self.board = ChessBoard()

@@ -2,6 +2,7 @@ import sys
 import chess
 from engine.main import Engine
 
+
 class UCI:
     def __init__(self):
         self.engine = Engine()

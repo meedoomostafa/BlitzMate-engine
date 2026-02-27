@@ -5,11 +5,16 @@ from typing import Dict, List, Optional
 
 # --- Backward Compatibility for old imports ---
 PIECE_VALUES = {
-    "PAWN": 100, "KNIGHT": 320, "BISHOP": 330, 
-    "ROOK": 500, "QUEEN": 900, "KING": 20000
+    "PAWN": 100,
+    "KNIGHT": 320,
+    "BISHOP": 330,
+    "ROOK": 500,
+    "QUEEN": 900,
+    "KING": 20000,
 }
 
 # --- Configuration Classes ---
+
 
 @dataclass
 class SearchConfig:
@@ -23,113 +28,595 @@ class SearchConfig:
     use_null_move: bool = True
     null_move_reduction: int = 2
 
+
 @dataclass
 class EvalConfig:
     use_positional: bool = True
-    
+
     # Material Values [MiddleGame, EndGame]
-    MATERIAL_MG: Dict[str, int] = field(default_factory=lambda: {
-        "PAWN": 100, "KNIGHT": 320, "BISHOP": 330, "ROOK": 500, "QUEEN": 900, "KING": 0
-    })
-    MATERIAL_EG: Dict[str, int] = field(default_factory=lambda: {
-        "PAWN": 120, "KNIGHT": 280, "BISHOP": 300, "ROOK": 550, "QUEEN": 950, "KING": 0
-    })
+    MATERIAL_MG: Dict[str, int] = field(
+        default_factory=lambda: {
+            "PAWN": 100,
+            "KNIGHT": 320,
+            "BISHOP": 330,
+            "ROOK": 500,
+            "QUEEN": 900,
+            "KING": 0,
+        }
+    )
+    MATERIAL_EG: Dict[str, int] = field(
+        default_factory=lambda: {
+            "PAWN": 120,
+            "KNIGHT": 280,
+            "BISHOP": 300,
+            "ROOK": 550,
+            "QUEEN": 950,
+            "KING": 0,
+        }
+    )
 
-    # Piece-Square Tables 
-    PST_KNIGHT_MG: List[int] = field(default_factory=lambda: [
-        -50,-40,-30,-30,-30,-30,-40,-50,
-        -40,-20,  0,  0,  0,  0,-20,-40,
-        -30,  0, 10, 15, 15, 10,  0,-30,
-        -30,  5, 15, 20, 20, 15,  5,-30,
-        -30,  0, 15, 20, 20, 15,  0,-30,
-        -30,  5, 10, 15, 15, 10,  5,-30,
-        -40,-20,  0,  5,  5,  0,-20,-40,
-        -50,-40,-30,-30,-30,-30,-40,-50
-    ])
-    
-    PST_KING_MG: List[int] = field(default_factory=lambda: [
-         20, 30, 10,  0,  0, 10, 30, 20,
-         20, 20,  0,  0,  0,  0, 20, 20,
-        -10,-20,-20,-20,-20,-20,-20,-10,
-        -20,-30,-30,-40,-40,-30,-30,-20,
-        -30,-40,-40,-50,-50,-40,-40,-30,
-        -30,-40,-40,-50,-50,-40,-40,-30,
-        -30,-40,-40,-50,-50,-40,-40,-30,
-        -30,-40,-40,-50,-50,-40,-40,-30
-    ])
+    # Piece-Square Tables
+    PST_KNIGHT_MG: List[int] = field(
+        default_factory=lambda: [
+            -50,
+            -40,
+            -30,
+            -30,
+            -30,
+            -30,
+            -40,
+            -50,
+            -40,
+            -20,
+            0,
+            0,
+            0,
+            0,
+            -20,
+            -40,
+            -30,
+            0,
+            10,
+            15,
+            15,
+            10,
+            0,
+            -30,
+            -30,
+            5,
+            15,
+            20,
+            20,
+            15,
+            5,
+            -30,
+            -30,
+            0,
+            15,
+            20,
+            20,
+            15,
+            0,
+            -30,
+            -30,
+            5,
+            10,
+            15,
+            15,
+            10,
+            5,
+            -30,
+            -40,
+            -20,
+            0,
+            5,
+            5,
+            0,
+            -20,
+            -40,
+            -50,
+            -40,
+            -30,
+            -30,
+            -30,
+            -30,
+            -40,
+            -50,
+        ]
+    )
 
-    PST_KING_EG: List[int] = field(default_factory=lambda: [
-        -50,-40,-30,-20,-20,-30,-40,-50,
-        -30,-20,-10,  0,  0,-10,-20,-30,
-        -30,-10, 20, 30, 30, 20,-10,-30,
-        -30,-10, 30, 40, 40, 30,-10,-30,
-        -30,-10, 30, 40, 40, 30,-10,-30,
-        -30,-10, 20, 30, 30, 20,-10,-30,
-        -30,-30,  0,  0,  0,  0,-30,-30,
-        -50,-30,-30,-30,-30,-30,-30,-50
-    ])
-    PST_PAWN_MG: List[int] = field(default_factory=lambda: [
-         0,  0,  0,  0,  0,  0,  0,  0,
-        50, 50, 50, 50, 50, 50, 50, 50,
-        10, 10, 20, 30, 30, 20, 10, 10,
-         5,  5, 10, 25, 25, 10,  5,  5,
-         0,  0,  0, 20, 20,  0,  0,  0,
-         5, -5,-10,  0,  0,-10, -5,  5,
-         5, 10, 10,-20,-20, 10, 10,  5,
-         0,  0,  0,  0,  0,  0,  0,  0
-    ])
+    PST_KING_MG: List[int] = field(
+        default_factory=lambda: [
+            20,
+            30,
+            10,
+            0,
+            0,
+            10,
+            30,
+            20,
+            20,
+            20,
+            0,
+            0,
+            0,
+            0,
+            20,
+            20,
+            -10,
+            -20,
+            -20,
+            -20,
+            -20,
+            -20,
+            -20,
+            -10,
+            -20,
+            -30,
+            -30,
+            -40,
+            -40,
+            -30,
+            -30,
+            -20,
+            -30,
+            -40,
+            -40,
+            -50,
+            -50,
+            -40,
+            -40,
+            -30,
+            -30,
+            -40,
+            -40,
+            -50,
+            -50,
+            -40,
+            -40,
+            -30,
+            -30,
+            -40,
+            -40,
+            -50,
+            -50,
+            -40,
+            -40,
+            -30,
+            -30,
+            -40,
+            -40,
+            -50,
+            -50,
+            -40,
+            -40,
+            -30,
+        ]
+    )
 
-    PST_PAWN_EG: List[int] = field(default_factory=lambda: [
-         0,  0,  0,  0,  0,  0,  0,  0,
-        80, 80, 80, 80, 80, 80, 80, 80,
-        50, 50, 50, 50, 50, 50, 50, 50,
-        30, 30, 30, 30, 30, 30, 30, 30,
-        20, 20, 20, 20, 20, 20, 20, 20,
-        10, 10, 10, 10, 10, 10, 10, 10,
-        10, 10, 10, 10, 10, 10, 10, 10,
-         0,  0,  0,  0,  0,  0,  0,  0
-    ])
+    PST_KING_EG: List[int] = field(
+        default_factory=lambda: [
+            -50,
+            -40,
+            -30,
+            -20,
+            -20,
+            -30,
+            -40,
+            -50,
+            -30,
+            -20,
+            -10,
+            0,
+            0,
+            -10,
+            -20,
+            -30,
+            -30,
+            -10,
+            20,
+            30,
+            30,
+            20,
+            -10,
+            -30,
+            -30,
+            -10,
+            30,
+            40,
+            40,
+            30,
+            -10,
+            -30,
+            -30,
+            -10,
+            30,
+            40,
+            40,
+            30,
+            -10,
+            -30,
+            -30,
+            -10,
+            20,
+            30,
+            30,
+            20,
+            -10,
+            -30,
+            -30,
+            -30,
+            0,
+            0,
+            0,
+            0,
+            -30,
+            -30,
+            -50,
+            -30,
+            -30,
+            -30,
+            -30,
+            -30,
+            -30,
+            -50,
+        ]
+    )
+    PST_PAWN_MG: List[int] = field(
+        default_factory=lambda: [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            10,
+            10,
+            20,
+            30,
+            30,
+            20,
+            10,
+            10,
+            5,
+            5,
+            10,
+            25,
+            25,
+            10,
+            5,
+            5,
+            0,
+            0,
+            0,
+            20,
+            20,
+            0,
+            0,
+            0,
+            5,
+            -5,
+            -10,
+            0,
+            0,
+            -10,
+            -5,
+            5,
+            5,
+            10,
+            10,
+            -20,
+            -20,
+            10,
+            10,
+            5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ]
+    )
+
+    PST_PAWN_EG: List[int] = field(
+        default_factory=lambda: [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            30,
+            30,
+            30,
+            30,
+            30,
+            30,
+            30,
+            30,
+            20,
+            20,
+            20,
+            20,
+            20,
+            20,
+            20,
+            20,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ]
+    )
 
     # BISHOP PST: Avoids corners and edges, loves long diagonals
-    PST_BISHOP_MG: List[int] = field(default_factory=lambda: [
-        -20,-10,-10,-10,-10,-10,-10,-20,
-        -10,  0,  0,  0,  0,  0,  0,-10,
-        -10,  0,  5, 10, 10,  5,  0,-10,
-        -10,  5,  5, 10, 10,  5,  5,-10,
-        -10,  0, 10, 10, 10, 10,  0,-10,
-        -10, 10, 10, 10, 10, 10, 10,-10,
-        -10,  5,  0,  0,  0,  0,  5,-10,
-        -20,-10,-10,-10,-10,-10,-10,-20
-    ])
-    
+    PST_BISHOP_MG: List[int] = field(
+        default_factory=lambda: [
+            -20,
+            -10,
+            -10,
+            -10,
+            -10,
+            -10,
+            -10,
+            -20,
+            -10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            -10,
+            -10,
+            0,
+            5,
+            10,
+            10,
+            5,
+            0,
+            -10,
+            -10,
+            5,
+            5,
+            10,
+            10,
+            5,
+            5,
+            -10,
+            -10,
+            0,
+            10,
+            10,
+            10,
+            10,
+            0,
+            -10,
+            -10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            -10,
+            -10,
+            5,
+            0,
+            0,
+            0,
+            0,
+            5,
+            -10,
+            -20,
+            -10,
+            -10,
+            -10,
+            -10,
+            -10,
+            -10,
+            -20,
+        ]
+    )
+
     # ROOK PST: Loves the 7th rank and center files
-    PST_ROOK_MG: List[int] = field(default_factory=lambda: [
-         0,  0,  0,  0,  0,  0,  0,  0,
-         5, 10, 10, 10, 10, 10, 10,  5,
-        -5,  0,  0,  0,  0,  0,  0, -5,
-        -5,  0,  0,  0,  0,  0,  0, -5,
-        -5,  0,  0,  0,  0,  0,  0, -5,
-        -5,  0,  0,  0,  0,  0,  0, -5,
-         5, 10, 10, 10, 10, 10, 10,  5,
-         0,  0,  0,  5,  5,  0,  0,  0
-    ])
-    
-    PST_QUEEN_MG: List[int] = field(default_factory=lambda: [
-        -20,-10,-10, -5, -5,-10,-10,-20,
-        -10,  0,  0,  0,  0,  0,  0,-10,
-        -10,  0,  5,  5,  5,  5,  0,-10,
-         -5,  0,  5,  5,  5,  5,  0, -5,
-          0,  0,  5,  5,  5,  5,  0, -5,
-        -10,  5,  5,  5,  5,  5,  0,-10,
-        -10,  0,  5,  0,  0,  0,  0,-10,
-        -20,-10,-10, -5, -5,-10,-10,-20
-    ])
+    PST_ROOK_MG: List[int] = field(
+        default_factory=lambda: [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            5,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            5,
+            -5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            -5,
+            -5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            -5,
+            -5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            -5,
+            -5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            -5,
+            5,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            5,
+            0,
+            0,
+            0,
+            5,
+            5,
+            0,
+            0,
+            0,
+        ]
+    )
+
+    PST_QUEEN_MG: List[int] = field(
+        default_factory=lambda: [
+            -20,
+            -10,
+            -10,
+            -5,
+            -5,
+            -10,
+            -10,
+            -20,
+            -10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            -10,
+            -10,
+            0,
+            5,
+            5,
+            5,
+            5,
+            0,
+            -10,
+            -5,
+            0,
+            5,
+            5,
+            5,
+            5,
+            0,
+            -5,
+            0,
+            0,
+            5,
+            5,
+            5,
+            5,
+            0,
+            -5,
+            -10,
+            5,
+            5,
+            5,
+            5,
+            5,
+            0,
+            -10,
+            -10,
+            0,
+            5,
+            0,
+            0,
+            0,
+            0,
+            -10,
+            -20,
+            -10,
+            -10,
+            -5,
+            -5,
+            -10,
+            -10,
+            -20,
+        ]
+    )
 
     BISHOP_PAIR_BONUS: int = 50
     ROOK_OPEN_FILE_BONUS: int = 25
-    PASSED_PAWN_BONUS: List[int] = field(default_factory=lambda: [0, 10, 20, 30, 50, 80, 120, 0])
+    PASSED_PAWN_BONUS: List[int] = field(
+        default_factory=lambda: [0, 10, 20, 30, 50, 80, 120, 0]
+    )
     ISOLATED_PAWN_PENALTY: int = -20
     DOUBLED_PAWN_PENALTY: int = -20
+
 
 @dataclass
 class AnalyzerConfig:
@@ -139,12 +626,14 @@ class AnalyzerConfig:
     TH_INACCURACY: int = 300
     TH_MISTAKE: int = 600
 
+
 @dataclass
 class UIConfig:
     engine_name: str = "BlitzMate"
     engine_author: str = "Medo"
     enable_uci: bool = True
     uci_threads: int = 1
+
 
 @dataclass
 class Config:
@@ -162,10 +651,12 @@ class Config:
             with open(path, "rb") as f:
                 raw = tomllib.load(f)
             if "search" in raw:
-                for k,v in raw["search"].items():
-                    if hasattr(cfg.search, k): setattr(cfg.search, k, v)
+                for k, v in raw["search"].items():
+                    if hasattr(cfg.search, k):
+                        setattr(cfg.search, k, v)
         except Exception as e:
             print(f"Warning: Could not load config.toml: {e}")
         return cfg
+
 
 CONFIG = Config.load_from_toml()
