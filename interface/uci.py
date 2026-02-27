@@ -11,7 +11,7 @@ class UCI:
     def __init__(self):
         self.board = chess.Board()
         self.engine = SearchEngine(BitboardEvaluator(), depth=CONFIG.search.depth)
-        self._search_lock = threading.Lock()
+        self._movetime_timer: threading.Timer | None = None
 
     def run(self):
         while True:
@@ -36,6 +36,7 @@ class UCI:
                 print("readyok")
 
             elif cmd == "ucinewgame":
+                self.engine.stop()
                 self.board = chess.Board()
                 self.engine = SearchEngine(BitboardEvaluator(), depth=CONFIG.search.depth)
 
@@ -46,6 +47,8 @@ class UCI:
                 self._parse_go(tokens[1:])
 
             elif cmd == "stop":
+                if self._movetime_timer is not None:
+                    self._movetime_timer.cancel()
                 self.engine.stop()
 
             elif cmd == "quit":
@@ -120,6 +123,14 @@ class UCI:
                 sys.stdout.flush()
 
         self.engine.start_search(self.board.copy(), depth=depth, callback=on_search_done)
+
+        # Start a timer to stop the search after movetime
+        if movetime is not None:
+            if self._movetime_timer is not None:
+                self._movetime_timer.cancel()
+            self._movetime_timer = threading.Timer(movetime / 1000.0, self.engine.stop)
+            self._movetime_timer.daemon = True
+            self._movetime_timer.start()
 
     def _parse_setoption(self, tokens):
         # setoption name <name> value <value>
