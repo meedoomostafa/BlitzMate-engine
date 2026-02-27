@@ -254,13 +254,11 @@ class BitboardEvaluator:
         """
         score = 0
 
-        # 1. Doubled Pawns Check
-        if color == chess.WHITE:
-            rear_pawns = my_pawns >> 8
-        else:
-            rear_pawns = my_pawns << 8
-        doubled_mask = my_pawns & rear_pawns
-        score += doubled_mask.bit_count() * self.cfg.DOUBLED_PAWN_PENALTY
+        # 1. Doubled Pawns Check — count pawns per file, penalize extras
+        for f in range(8):
+            pawns_on_file = (my_pawns & FILES[f]).bit_count()
+            if pawns_on_file > 1:
+                score += (pawns_on_file - 1) * self.cfg.DOUBLED_PAWN_PENALTY
 
         # 2. File-based Checks
         for sq in chess.SquareSet(my_pawns):
