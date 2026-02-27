@@ -320,8 +320,8 @@ class SearchEngine:
             for pt in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]
         )
 
-        # Null Move Pruning
-        if depth >= 3 and not board.is_check() and ply > 0:
+        # Null Move Pruning (skip in pawn-only endgames to avoid zugzwang)
+        if depth >= 3 and not board.is_check() and ply > 0 and has_big_pieces:
             board.push(chess.Move.null())
             score = -self._negamax(board, depth - 3, -beta, -beta + 1, ply + 1)
             board.pop()
