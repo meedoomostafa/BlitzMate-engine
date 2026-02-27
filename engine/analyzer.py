@@ -70,15 +70,6 @@ class Analyzer:
         delta_vs_best = best_pov - new_pov
         improvement_vs_old = new_pov - old_pov
 
-        # SEE (static exchange evaluation) to detect bad captures
-        see_value = None
-        try:
-            see_value = board.see(
-                move
-            )  # returns material gain for side to move (centipawns-ish)
-        except Exception:
-            see_value = None
-
         # special cases
         if is_checkmate:
             label = "Checkmate (winning move)"
@@ -114,7 +105,6 @@ class Analyzer:
             "best_score": best_score,
             "delta_vs_best": int(delta_vs_best),
             "improvement_vs_old": int(improvement_vs_old),
-            "see": int(see_value) if see_value is not None else None,
             "label": label,
             "player_is_white": player_is_white,
         }
@@ -131,6 +121,9 @@ class Analyzer:
             best_move, _ponder, best_score = self.search_engine.search_best_move(board)
             # parse the player's move
             move = chess.Move.from_uci(mv_uci)
+            if move not in board.legal_moves:
+                report.append({"move_uci": mv_uci, "label": "Illegal", "error": True})
+                break
             # classify
             info = self.classify_move(board, move, best_move, best_score)
             report.append(info)
