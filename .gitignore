@@ -5,13 +5,13 @@ __pycache__/
 *.so
 *.egg-info/
 venv/
+.venv/
 .idea/
 .vscode/
 .DS_Store
 
-
-# syzygy
-wdl/
-dtz/
+# Binary assets (downloaded via setup_assets.py)
+engine/assets/openings/*.bin
+engine/assets/syzygy/
 *.rtbw
 *.rtbz
