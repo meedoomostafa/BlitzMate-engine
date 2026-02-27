@@ -473,16 +473,12 @@ class ChessGUI:
                         target = self.get_square_at(pygame.mouse.get_pos())
                         if target is not None and target != self.dragging_sq:
 
-                            dragged_piece = self.board.piece_at(
-                                self.dragging_sq
-                            )
+                            dragged_piece = self.board.piece_at(self.dragging_sq)
                             if dragged_piece is None:
                                 self.dragging_sq = None
                                 continue
 
-                            is_pawn = (
-                                dragged_piece.piece_type == chess.PAWN
-                            )
+                            is_pawn = dragged_piece.piece_type == chess.PAWN
                             is_promo_rank = chess.square_rank(target) in [0, 7]
 
                             if is_pawn and is_promo_rank:
