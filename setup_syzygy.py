@@ -52,7 +52,7 @@ RAW_FILES = [
     "KRRvK",
 ]
 
-BASE_URL = "http://tablebase.sesse.net/syzygy/3-4-5/"
+BASE_URL = "https://tablebase.sesse.net/syzygy/3-4-5/"
 TARGET_DIR = os.path.join("engine", "assets", "syzygy")
 
 
