@@ -20,14 +20,20 @@ from collections import defaultdict
 
 from engine.core.board import ChessBoard
 from engine.core.bitboard_evaluator import BitboardEvaluator
-from engine.core.transposition import TranspositionTable, TTEntry, TT_EXACT, TT_ALPHA, TT_BETA
+from engine.core.transposition import (
+    TranspositionTable,
+    TTEntry,
+    TT_EXACT,
+    TT_ALPHA,
+    TT_BETA,
+)
 from engine.core.search import SearchEngine, MATE_SCORE, INF
 from engine.main import Engine
-
 
 # ════════════════════════════════════════════════════════════════════════════
 #  BOARD TESTS
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TestChessBoard:
     def test_initial_position(self):
@@ -84,12 +90,16 @@ class TestChessBoard:
         assert b.get_fen() == fen
 
     def test_checkmate_no_legal_moves(self):
-        b = ChessBoard(fen="rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 0 1")
+        b = ChessBoard(
+            fen="rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 0 1"
+        )
         assert len(b.get_legal_moves()) == 0
         assert b.board.is_checkmate()
 
     def test_en_passant_move(self):
-        b = ChessBoard(fen="rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3")
+        b = ChessBoard(
+            fen="rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3"
+        )
         assert b.make_move("e5f6") is True
 
     def test_castling_move(self):
@@ -114,6 +124,7 @@ class TestChessBoard:
 # ════════════════════════════════════════════════════════════════════════════
 #  EVALUATOR TESTS
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TestBitboardEvaluator:
     def setup_method(self):
@@ -238,6 +249,7 @@ class TestBitboardEvaluator:
 #  TRANSPOSITION TABLE TESTS
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestTranspositionTable:
     def test_store_and_get(self):
         tt = TranspositionTable()
@@ -281,8 +293,13 @@ class TestTranspositionTable:
     def test_clear(self):
         tt = TranspositionTable()
         board = chess.Board()
-        tt.store(board, depth=5, value=100, flag=TT_EXACT,
-                 best_move=chess.Move.from_uci("e2e4"))
+        tt.store(
+            board,
+            depth=5,
+            value=100,
+            flag=TT_EXACT,
+            best_move=chess.Move.from_uci("e2e4"),
+        )
         tt.clear()
         assert tt.get(board) is None
 
@@ -324,21 +341,32 @@ class TestTranspositionTable:
     def test_negative_values(self):
         tt = TranspositionTable()
         board = chess.Board()
-        tt.store(board, depth=5, value=-500, flag=TT_EXACT,
-                 best_move=chess.Move.from_uci("e2e4"))
+        tt.store(
+            board,
+            depth=5,
+            value=-500,
+            flag=TT_EXACT,
+            best_move=chess.Move.from_uci("e2e4"),
+        )
         assert tt.get(board).value == -500
 
     def test_mate_score_storage(self):
         tt = TranspositionTable()
         board = chess.Board()
-        tt.store(board, depth=10, value=MATE_SCORE - 5, flag=TT_EXACT,
-                 best_move=chess.Move.from_uci("e2e4"))
+        tt.store(
+            board,
+            depth=10,
+            value=MATE_SCORE - 5,
+            flag=TT_EXACT,
+            best_move=chess.Move.from_uci("e2e4"),
+        )
         assert tt.get(board).value == MATE_SCORE - 5
 
 
 # ════════════════════════════════════════════════════════════════════════════
 #  SEARCH ENGINE TESTS
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TestSearchEngine:
     def setup_method(self):
@@ -388,7 +416,9 @@ class TestSearchEngine:
     # ── Terminal positions ─────────────────────────────────────────────────
 
     def test_checkmate_returns_none(self):
-        board = chess.Board("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 0 1")
+        board = chess.Board(
+            "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 0 1"
+        )
         assert board.is_checkmate()
         move, _, score = self.engine.search_best_move(board)
         assert move is None
@@ -459,7 +489,9 @@ class TestSearchEngine:
 
     def test_start_search_async(self):
         # Use a non-book position to force actual search
-        board = chess.Board("r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 5 4")
+        board = chess.Board(
+            "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 5 4"
+        )
         results = []
 
         def cb(move, ponder, depth, score):
@@ -474,7 +506,9 @@ class TestSearchEngine:
 
     def test_start_search_produces_valid_move(self):
         # Use a non-book position
-        board = chess.Board("r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 5 4")
+        board = chess.Board(
+            "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 5 4"
+        )
         final_move = [None]
 
         def cb(move, ponder, depth, score):
@@ -492,12 +526,15 @@ class TestSearchEngine:
 #  MOVE ORDERING TESTS
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestMoveOrdering:
     def setup_method(self):
         self.engine = SearchEngine(depth=2)
 
     def test_captures_ordered_first(self):
-        board = chess.Board("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 1")
+        board = chess.Board(
+            "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 1"
+        )
         moves = self.engine._order_moves(board, None, 0)
         capture = chess.Move.from_uci("e4d5")
         idx = moves.index(capture)
@@ -510,7 +547,9 @@ class TestMoveOrdering:
         assert moves[0] == tt_move
 
     def test_killer_moves_after_captures(self):
-        board = chess.Board("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 1")
+        board = chess.Board(
+            "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 1"
+        )
         killer = chess.Move.from_uci("d2d4")
         self.engine.killers[0][0] = killer
         moves = self.engine._order_moves(board, None, 0)
@@ -557,6 +596,7 @@ class TestMoveOrdering:
 #  ENGINE WRAPPER INTEGRATION TESTS
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestEngineWrapper:
     def test_get_best_move(self):
         eng = Engine(depth=2)
@@ -592,6 +632,7 @@ class TestEngineWrapper:
 #  EDGE CASE TESTS (Common chess engine failures)
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestEdgeCases:
 
     def test_only_one_legal_move(self):
@@ -607,7 +648,12 @@ class TestEdgeCases:
         move, _, _ = eng.search_best_move(board)
         assert move is not None
         if move.promotion:
-            assert move.promotion in [chess.QUEEN, chess.KNIGHT, chess.ROOK, chess.BISHOP]
+            assert move.promotion in [
+                chess.QUEEN,
+                chess.KNIGHT,
+                chess.ROOK,
+                chess.BISHOP,
+            ]
 
     def test_zugzwang_position(self):
         board = chess.Board("8/8/p1p5/1p5p/1P5p/8/PPP2PPk/4K3 w - - 0 1")
@@ -668,7 +714,7 @@ class TestEdgeCases:
 
     def test_underpromotion_knight_check(self):
         """Knight promotion that delivers check should be considered."""
-        # Pawn on g7, promote to knight gives check on g8 if king on e8... 
+        # Pawn on g7, promote to knight gives check on g8 if king on e8...
         # Actually h7->h8=N doesn't give check. Let's use f7 pawn:
         board = chess.Board("4k3/5P2/8/8/8/8/8/4K3 w - - 0 1")
         eng = SearchEngine(depth=3)
@@ -685,7 +731,9 @@ class TestEdgeCases:
 
     def test_many_captures_available(self):
         """Position with many captures should not crash move ordering."""
-        board = chess.Board("r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4")
+        board = chess.Board(
+            "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4"
+        )
         eng = SearchEngine(depth=2)
         move, _, _ = eng.search_best_move(board)
         assert move is not None
@@ -694,6 +742,7 @@ class TestEdgeCases:
 # ════════════════════════════════════════════════════════════════════════════
 #  STRESS TESTS
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TestStress:
 
@@ -707,7 +756,9 @@ class TestStress:
         assert elapsed < 30
 
     def test_complex_middlegame(self):
-        board = chess.Board("rnbqkb1r/1p2pppp/p2p1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq - 0 6")
+        board = chess.Board(
+            "rnbqkb1r/1p2pppp/p2p1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq - 0 6"
+        )
         eng = SearchEngine(depth=4)
         move, _, score = eng.search_best_move(board)
         assert move is not None
@@ -732,7 +783,9 @@ class TestStress:
         boards = [
             chess.Board(),
             chess.Board("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"),
-            chess.Board("r1bqkbnr/pppppppp/2n5/8/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 0 2"),
+            chess.Board(
+                "r1bqkbnr/pppppppp/2n5/8/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 0 2"
+            ),
         ]
         for board in boards:
             move, _, _ = eng.search_best_move(board)
@@ -743,7 +796,9 @@ class TestStress:
         eng = SearchEngine(depth=4)
         eng.tt = TranspositionTable(size_mb=1)
         # Use a non-book position
-        board = chess.Board("r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 5 4")
+        board = chess.Board(
+            "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 5 4"
+        )
         move, _, _ = eng.search_best_move(board)
         assert move is not None
         assert len(eng.tt.table) > 0
@@ -804,11 +859,11 @@ class TestStress:
     def test_endgame_positions_batch(self):
         """Test several endgame positions don't crash."""
         positions = [
-            "4k3/8/8/8/8/8/4R3/4K3 w - - 0 1",   # KR vs K
-            "4k3/8/8/8/8/8/8/4KQ2 w - - 0 1",     # KQ vs K
-            "4k3/4P3/8/8/8/8/8/4K3 w - - 0 1",     # K+P vs K
-            "4k3/8/8/8/8/8/8/3RKR2 w - - 0 1",     # KRR vs K
-            "4k3/8/8/8/8/8/8/2B1KB2 w - - 0 1",    # KBB vs K
+            "4k3/8/8/8/8/8/4R3/4K3 w - - 0 1",  # KR vs K
+            "4k3/8/8/8/8/8/8/4KQ2 w - - 0 1",  # KQ vs K
+            "4k3/4P3/8/8/8/8/8/4K3 w - - 0 1",  # K+P vs K
+            "4k3/8/8/8/8/8/8/3RKR2 w - - 0 1",  # KRR vs K
+            "4k3/8/8/8/8/8/8/2B1KB2 w - - 0 1",  # KBB vs K
             "4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1",  # Pawn endgame
         ]
         eng = SearchEngine(depth=3)
@@ -822,6 +877,7 @@ class TestStress:
 # ════════════════════════════════════════════════════════════════════════════
 #  QUIESCENCE SEARCH TESTS
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TestQuiescence:
     def setup_method(self):
@@ -859,12 +915,15 @@ class TestQuiescence:
 #  PV LINE EXTRACTION TESTS
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestPVLine:
     def test_pv_after_search(self):
         """After a search, PV line should have at least one move."""
         eng = SearchEngine(depth=3)
         # Use a non-book position
-        board = chess.Board("r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 5 4")
+        board = chess.Board(
+            "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 5 4"
+        )
         eng.search_best_move(board)
         pv = eng._get_pv_line(board, 3)
         assert len(pv) >= 1
