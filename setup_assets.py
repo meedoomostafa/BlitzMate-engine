@@ -1,19 +1,27 @@
-"""Download opening book and Syzygy tablebase files for BlitzMate engine."""
+"""Download opening book and Syzygy tablebase files for BlitzMate engine.
+
+Usage
+-----
+    python setup_assets.py              # interactive – choose what to download
+    python setup_assets.py books        # download ALL opening books
+    python setup_assets.py syzygy       # download Syzygy tablebases
+    python setup_assets.py all          # download everything (non-interactive)
+"""
 
 import os
-import urllib.request
 import sys
+import urllib.request
 
 # ---------------------------------------------------------------------------
 # Opening books
 # ---------------------------------------------------------------------------
 
 BOOKS = [
-    "Titans.bin",
-    "gm2600.bin",
-    "komodo.bin",
-    "rodent.bin",
-    "Human.bin",
+    ("Titans.bin", "Titans – aggressive/tactical style (~1.8 MB)"),
+    ("gm2600.bin", "GM2600 – grandmaster-level games (~340 KB)"),
+    ("komodo.bin", "Komodo – Komodo engine openings (~8.8 MB)"),
+    ("rodent.bin", "Rodent – Rodent engine openings (~2.7 MB)"),
+    ("Human.bin", "Human – large human-games book (~14 MB)"),
 ]
 
 BOOKS_BASE_URL = (
@@ -105,11 +113,18 @@ def _download(url: str, dest: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def setup_books() -> None:
-    """Download opening books from the GitHub release."""
+def setup_books(selected: list[str] | None = None) -> None:
+    """Download opening books from the GitHub release.
+
+    Parameters
+    ----------
+    selected : list[str] | None
+        Filenames to download.  ``None`` means *all* books.
+    """
     os.makedirs(BOOKS_DIR, exist_ok=True)
-    print(f"Checking {len(BOOKS)} opening book(s)...")
-    for name in BOOKS:
+    targets = selected if selected is not None else [b[0] for b in BOOKS]
+    print(f"Downloading {len(targets)} opening book(s)...")
+    for name in targets:
         _download(BOOKS_BASE_URL + name, os.path.join(BOOKS_DIR, name))
     print("Opening-book setup complete.\n")
 
@@ -135,6 +150,85 @@ def setup_syzygy() -> None:
     print("Syzygy setup complete.\n")
 
 
+def _select_books_interactive() -> list[str] | None:
+    """Show an interactive menu and return chosen book filenames.
+
+    Returns ``None`` when the user picks "Download all".
+    Returns an empty list when the user chooses to skip.
+    """
+    print("\n===== Opening Books =====")
+    print("  0) Download ALL books")
+    for idx, (name, desc) in enumerate(BOOKS, start=1):
+        already = (
+            " [installed]" if os.path.exists(os.path.join(BOOKS_DIR, name)) else ""
+        )
+        print(f"  {idx}) {desc}{already}")
+    print(f"  {len(BOOKS) + 1}) Skip books\n")
+
+    choice = input(
+        "Enter your choices (comma-separated, e.g. 1,3) or press Enter for all: "
+    ).strip()
+
+    if not choice:
+        return None  # default = all
+
+    nums: list[int] = []
+    for part in choice.split(","):
+        part = part.strip()
+        if part.isdigit():
+            nums.append(int(part))
+        else:
+            print(f"  [!] Ignoring invalid input: {part}")
+
+    if 0 in nums:
+        return None  # all
+    if (len(BOOKS) + 1) in nums:
+        return []  # skip
+
+    selected: list[str] = []
+    for n in nums:
+        if 1 <= n <= len(BOOKS):
+            selected.append(BOOKS[n - 1][0])
+        else:
+            print(f"  [!] Ignoring out-of-range number: {n}")
+
+    return selected if selected else None
+
+
+def _interactive_menu() -> None:
+    """Run the full interactive setup wizard."""
+    print("=" * 50)
+    print("  BlitzMate Asset Setup")
+    print("=" * 50)
+    print("\nWhat would you like to download?\n")
+    print("  1) Opening books only")
+    print("  2) Syzygy tablebases only")
+    print("  3) Everything (books + Syzygy)")
+    print("  4) Quit\n")
+
+    choice = input("Choice [3]: ").strip() or "3"
+
+    if choice == "4":
+        print("Nothing to do. Bye!")
+        return
+
+    if choice in ("1", "3"):
+        book_selection = _select_books_interactive()
+        if book_selection is not None and len(book_selection) == 0:
+            print("  Skipping books.\n")
+        else:
+            setup_books(book_selection)
+
+    if choice in ("2", "3"):
+        setup_syzygy()
+
+    if choice not in ("1", "2", "3", "4"):
+        print(f"Unknown choice: {choice}")
+        sys.exit(1)
+
+    print("All done!")
+
+
 def main() -> None:
     if len(sys.argv) > 1:
         target = sys.argv[1].lower()
@@ -142,13 +236,15 @@ def main() -> None:
             setup_books()
         elif target == "syzygy":
             setup_syzygy()
+        elif target == "all":
+            setup_books()
+            setup_syzygy()
         else:
             print(f"Unknown target: {target}")
-            print("Usage: python setup_assets.py [books|syzygy]")
+            print("Usage: python setup_assets.py [books|syzygy|all]")
             sys.exit(1)
     else:
-        setup_books()
-        setup_syzygy()
+        _interactive_menu()
 
 
 if __name__ == "__main__":

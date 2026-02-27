@@ -72,24 +72,37 @@ The core decision-making process uses advanced algorithms to calculate the best 
 
 ```bash
 # 1. Clone the repository
-git clone [https://github.com/meedoomostafa/BlitzMate-engine.git](https://github.com/meedoomostafa/BlitzMate-engine.git)
+git clone https://github.com/meedoomostafa/BlitzMate-engine.git
 cd BlitzMate-engine
 
-# 2. Create virtual environment 
-python3.13 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# 2. Create virtual environment
+python3.13 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 pip install --upgrade pip
 
-# Install requirements for each module separately
-pip install -r engine/requirements.txt
-pip install -r gui/requirements.txt
-pip install -r interface/requirements.txt
+# 3. Install all dependencies
+pip install -r requirements.txt
 
-# 5. Download Tablebases (Critical for Endgame but optional)
-# This script downloads ~500MB of Syzygy endgame data automatically
-python setup_syzygy.py
+# 4. Download game assets (interactive wizard)
+python setup_assets.py
 ```
+
+### Asset Setup Options
+
+The interactive wizard lets you choose exactly what to download:
+
+| Command | Behaviour |
+| :--- | :--- |
+| `python setup_assets.py` | Interactive menu – pick books individually or download everything |
+| `python setup_assets.py books` | Download **all** opening books (~28 MB) |
+| `python setup_assets.py syzygy` | Download Syzygy endgame tablebases (~215 MB) |
+| `python setup_assets.py all` | Download books **and** Syzygy (non-interactive) |
+
+> **Note:** The engine works without any external assets — it falls back to its
+> built-in search. However, downloading the opening books is **recommended** for
+> stronger and faster opening play. Syzygy tablebases provide perfect endgame
+> play with ≤ 5 pieces on the board.
 
 -----
 
