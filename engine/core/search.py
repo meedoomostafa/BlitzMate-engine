@@ -51,7 +51,7 @@ class SearchEngine:
         if os.path.exists(syzygy_path):
             try:
                 self.tablebase = chess.syzygy.open_tablebase(syzygy_path)
-            except:
+            except Exception:
                 pass
 
     def get_book_move(self, board: chess.Board) -> Optional[chess.Move]:
@@ -65,7 +65,7 @@ class SearchEngine:
                             f"[{os.path.basename(book_path)}] Book Move: {entry.move.uci()}"
                         )
                         return entry.move
-                except:
+                except Exception:
                     continue
         return None
 
@@ -79,7 +79,7 @@ class SearchEngine:
 
         try:
             root_wdl = self.tablebase.probe_wdl(board)
-        except:
+        except Exception:
             return None
 
         candidates = []  # List of tuples: (move, dtz_score)
@@ -103,7 +103,7 @@ class SearchEngine:
                     dtz = self.tablebase.probe_dtz(board)
                     candidates.append((move, dtz))
 
-            except:
+            except Exception:
                 pass
 
             finally:
@@ -288,13 +288,11 @@ class SearchEngine:
             if chess.popcount(board.occupied) <= 5:
                 try:
                     wdl = self.tablebase.probe_wdl(board)
-                    if wdl > 0:
-                        return 800000 - ply
-                    if wdl < 0:
-                        return -800000 + ply
-                    return 0
-                except:
-                    pass
+                    if wdl > 0: return 800000 - ply  
+                    if wdl < 0: return -800000 + ply 
+                    return 0 
+                except Exception:
+                    pass 
 
         alpha_orig = alpha
 
