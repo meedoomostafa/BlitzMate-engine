@@ -144,6 +144,13 @@ class SearchEngine:
         ponder_move = None
         best_score = 0
         
+        # Age history scores to prevent stale ordering
+        for from_sq in self.history:
+            for to_sq in self.history[from_sq]:
+                self.history[from_sq][to_sq] //= 2
+        # Reset killers
+        self.killers = [[None] * 2 for _ in range(128)]
+        
         start_time = time.time()
 
         # Iterative Deepening
