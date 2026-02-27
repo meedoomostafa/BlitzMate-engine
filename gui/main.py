@@ -1,6 +1,6 @@
 import pygame
 import chess
-import threading
+import queue
 import sys, os
 
 # Ensure engine import works
@@ -84,7 +84,10 @@ class ChessGUI:
         self.info_depth = None
         self.info_score = None
         self.ponder_move = None
-
+        
+        # Thread-safe queue for engine results
+        self._engine_queue = queue.Queue()
+        
         # Engine Event
         self.ENGINE_MOVE_EVENT = pygame.USEREVENT + 1
 
@@ -339,19 +342,59 @@ class ChessGUI:
             self.engine.start_search(self.board.copy(), callback=self.engine_callback)
 
     def engine_callback(self, best_move, ponder_move, depth, score):
-        data = {
+        self._engine_queue.put({
             "best_move": best_move,
             "ponder_move": ponder_move,
             "depth": depth,
-            "score": score,
-        }
-        pygame.event.post(pygame.event.Event(self.ENGINE_MOVE_EVENT, data))
-        return True
+            "score": score
+        })
+
+    def _handle_engine_event(self, data):
+        self.info_depth = data['depth']
+        self.ponder_move = data['ponder_move']
+
+        sc = data['score']
+        if isinstance(sc, int):
+            self.info_score = f"{sc/100:.2f}"
+        else:
+            self.info_score = str(sc)
+
+        # Check if search is finished
+        if data['depth'] <= 0:
+            self.engine_thinking = False
+            best_move = data['best_move']
+
+            if best_move and self.push_move(best_move):
+                print(f"Engine plays: {best_move.uci()}")
+
+                # Handle premove
+                if self.premove:
+                    if self.push_move(self.premove):
+                        print(f"Premove executed: {self.premove.uci()}")
+                        self.premove = None
+                        if not self.board.is_game_over():
+                            self.trigger_engine()
+                    else:
+                        print("Premove illegal, cancelled.")
+                        self.premove = None
+
+            if self.board.is_game_over():
+                self.game_over = True
+                print("Game Over")
 
     def run(self):
         running = True
         while running:
             self.clock.tick(60)
+            
+            # Poll engine results from thread-safe queue
+            while not self._engine_queue.empty():
+                try:
+                    data = self._engine_queue.get_nowait()
+                    self._handle_engine_event(data)
+                except queue.Empty:
+                    break
+            
             self.draw()
 
             for event in pygame.event.get():
@@ -453,39 +496,7 @@ class ChessGUI:
                         self.dragging_sq = None
 
                 elif event.type == self.ENGINE_MOVE_EVENT:
-                    data = event.__dict__
-
-                    self.info_depth = data["depth"]
-                    self.ponder_move = data["ponder_move"]
-
-                    sc = data["score"]
-                    if isinstance(sc, int):
-                        self.info_score = f"{sc/100:.2f}"
-                    else:
-                        self.info_score = str(sc)
-
-                    # Check if search is Finished
-                    if data["depth"] <= 0:
-                        self.engine_thinking = False
-                        best_move = data["best_move"]
-
-                        if best_move and self.push_move(best_move):
-                            print(f"Engine plays: {best_move.uci()}")
-
-                            # Handle Premove
-                            if self.premove:
-                                if self.push_move(self.premove):
-                                    print(f"Premove executed: {self.premove.uci()}")
-                                    self.premove = None
-                                    if not self.board.is_game_over():
-                                        self.trigger_engine()
-                                else:
-                                    print("Premove illegal, cancelled.")
-                                    self.premove = None
-
-                        if self.board.is_game_over():
-                            self.game_over = True
-                            print("Game Over")
+                    pass  # Handled via queue above
 
         pygame.quit()
 
