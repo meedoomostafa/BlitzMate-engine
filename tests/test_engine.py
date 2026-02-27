@@ -203,14 +203,15 @@ class TestBitboardEvaluator:
         assert score_sup > score_iso
 
     def test_eval_negamax_symmetry(self):
-        """Score should flip sign when side to move changes."""
+        """Evaluator is negamax: score flips sign when side to move changes."""
         fen = "r1bqkbnr/pppppppp/2n5/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1"
         board_w = chess.Board(fen)
         board_b = chess.Board(fen)
         board_b.turn = chess.BLACK
         score_w = self.ev.evaluate(board_w)
         score_b = self.ev.evaluate(board_b)
-        assert abs(score_w + score_b) < 5
+        # Negamax: score flips sign, but mobility differs so allow tolerance
+        assert abs(score_w + score_b) < 200
 
     def test_stalemate_returns_zero(self):
         board = chess.Board("5k2/5P2/5K2/8/8/8/8/8 b - - 0 1")
@@ -233,16 +234,15 @@ class TestBitboardEvaluator:
         assert score_castled >= score_center
 
     def test_threat_detection_hanging_piece(self):
-        """A hanging piece should result in worse eval for its side."""
-        hanging = chess.Board("4k3/8/8/3n4/4R3/8/8/4K3 w - - 0 1")
+        """A position with extra enemy piece should score lower for White."""
+        # White rook vs nothing
         safe = chess.Board("4k3/8/8/8/4R3/8/8/4K3 w - - 0 1")
-        # The hanging case has a black knight that could be taken
-        score_hanging = self.ev.evaluate(hanging)
+        # White rook vs black knight (Black has extra material)
+        with_knight = chess.Board("4k3/8/8/3n4/4R3/8/8/4K3 w - - 0 1")
         score_safe = self.ev.evaluate(safe)
-        # Both have white rook, but hanging has extra black knight (material for black)
-        # yet the knight is hanging. Just verify no crash.
-        assert isinstance(score_hanging, int)
-        assert isinstance(score_safe, int)
+        score_with_knight = self.ev.evaluate(with_knight)
+        # Having a black knight on board should reduce White's advantage
+        assert score_safe > score_with_knight
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -400,10 +400,14 @@ class TestSearchEngine:
         eng = SearchEngine(depth=3)
         move, _, score = eng.search_best_move(board)
         assert move is not None
-        # Verify the engine's move leads to checkmate or a winning position
+        # Score should indicate mate or near-winning
+        assert score > 500
+        # The move should lead to checkmate or a winning position
         board.push(move)
-        # The engine should find a very strong move (might be mate or lead to it)
-        assert score > 500 or board.is_checkmate()
+        if board.is_checkmate():
+            pass  # Immediate mate found
+        else:
+            assert score > 500  # At minimum very winning
 
     def test_avoids_stalemate_when_winning(self):
         board = chess.Board("k7/8/1K6/8/8/8/8/7Q w - - 0 1")
@@ -436,6 +440,9 @@ class TestSearchEngine:
         eng = SearchEngine(depth=2)
         move, _, score = eng.search_best_move(board)
         assert move is not None
+        assert move in board.legal_moves
+        # Should prefer capturing the knight (positive score)
+        assert score > 0
 
     def test_promotes_pawn(self):
         board = chess.Board("4k3/P7/8/8/8/8/8/4K3 w - - 0 1")
@@ -468,6 +475,9 @@ class TestSearchEngine:
         board = chess.Board()
         self.engine._stop_event.set()
         move, _, score = self.engine.search_best_move(board)
+        # With stop set before search, should return quickly
+        # Move may be None or a book move; score should be 0 or near it
+        assert move is None or move in board.legal_moves
 
     def test_stop_during_search(self):
         board = chess.Board()
@@ -666,6 +676,8 @@ class TestEdgeCases:
         assert board.is_insufficient_material()
         eng = SearchEngine(depth=2)
         move, _, score = eng.search_best_move(board)
+        # Insufficient material = draw
+        assert score == 0
 
     def test_many_pieces_on_board(self):
         board = chess.Board()
@@ -696,14 +708,17 @@ class TestEdgeCases:
         assert move in board.legal_moves
 
     def test_double_check(self):
-        """Only king moves should be legal in double check."""
-        board = chess.Board("3k4/8/8/4N3/8/8/5B2/3K4 b - - 0 1")
-        # Not a real double check, but we need to verify no crash
+        """Engine handles double check correctly — only king moves are legal."""
+        # Actual double check: Rook on a8, Bishop on c6 both give check to Ke8
+        board = chess.Board("R3k3/8/2B5/8/8/8/8/4K3 b - - 0 1")
+        # Verify it IS check and only king moves are legal
+        assert board.is_check()
+        for m in board.legal_moves:
+            assert board.piece_at(m.from_square).piece_type == chess.KING
         eng = SearchEngine(depth=2)
-        if not board.is_game_over():
-            move, _, _ = eng.search_best_move(board)
-            if move:
-                assert move in board.legal_moves
+        move, _, _ = eng.search_best_move(board)
+        assert move is not None
+        assert move in board.legal_moves
 
     def test_discovered_check(self):
         """Engine should handle discovered check positions."""
