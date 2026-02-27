@@ -300,17 +300,12 @@ class SearchEngine:
         tt_move = None
 
         if tt_entry and tt_entry.depth >= depth:
-            if tt_entry.flag == TT_EXACT:
-                return tt_entry.value
-            elif tt_entry.flag == TT_ALPHA:
-                alpha = max(alpha, tt_entry.value)
-            elif tt_entry.flag == TT_BETA:
-                beta = min(beta, tt_entry.value)
-            if alpha >= beta:
-                return tt_entry.value
-
-        if tt_entry:
-            tt_move = tt_entry.best_move
+            if tt_entry.flag == TT_EXACT: return tt_entry.value
+            elif tt_entry.flag == TT_ALPHA: beta = min(beta, tt_entry.value)
+            elif tt_entry.flag == TT_BETA: alpha = max(alpha, tt_entry.value)
+            if alpha >= beta: return tt_entry.value
+        
+        if tt_entry: tt_move = tt_entry.best_move
 
         if depth <= 0:
             return self._quiescence(board, alpha, beta)
