@@ -84,7 +84,7 @@ class ChessGUI:
         self.info_depth = None
         self.info_score = None
         self.ponder_move = None
-        
+
         # Thread-safe queue for engine results
         self._engine_queue = queue.Queue()
 
@@ -339,27 +339,29 @@ class ChessGUI:
             self.engine.start_search(self.board.copy(), callback=self.engine_callback)
 
     def engine_callback(self, best_move, ponder_move, depth, score):
-        self._engine_queue.put({
-            "best_move": best_move,
-            "ponder_move": ponder_move,
-            "depth": depth,
-            "score": score
-        })
+        self._engine_queue.put(
+            {
+                "best_move": best_move,
+                "ponder_move": ponder_move,
+                "depth": depth,
+                "score": score,
+            }
+        )
 
     def _handle_engine_event(self, data):
-        self.info_depth = data['depth']
-        self.ponder_move = data['ponder_move']
+        self.info_depth = data["depth"]
+        self.ponder_move = data["ponder_move"]
 
-        sc = data['score']
+        sc = data["score"]
         if isinstance(sc, int):
             self.info_score = f"{sc/100:.2f}"
         else:
             self.info_score = str(sc)
 
         # Check if search is finished
-        if data['depth'] <= 0:
+        if data["depth"] <= 0:
             self.engine_thinking = False
-            best_move = data['best_move']
+            best_move = data["best_move"]
 
             if best_move and self.push_move(best_move):
                 print(f"Engine plays: {best_move.uci()}")
@@ -383,7 +385,7 @@ class ChessGUI:
         running = True
         while running:
             self.clock.tick(60)
-            
+
             # Poll engine results from thread-safe queue
             while not self._engine_queue.empty():
                 try:
@@ -391,7 +393,7 @@ class ChessGUI:
                     self._handle_engine_event(data)
                 except queue.Empty:
                     break
-            
+
             self.draw()
 
             for event in pygame.event.get():

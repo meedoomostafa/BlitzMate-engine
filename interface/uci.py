@@ -6,7 +6,6 @@ from engine.core.search import SearchEngine
 from engine.core.bitboard_evaluator import BitboardEvaluator
 
 
-
 class UCI:
     def __init__(self):
         self.board = chess.Board()
@@ -28,8 +27,12 @@ class UCI:
             if cmd == "uci":
                 print(f"id name {CONFIG.ui.engine_name}")
                 print(f"id author {CONFIG.ui.engine_author}")
-                print(f"option name Hash type spin default {CONFIG.search.hash_size_mb} min 1 max 4096")
-                print(f"option name Threads type spin default {CONFIG.search.threads} min 1 max 128")
+                print(
+                    f"option name Hash type spin default {CONFIG.search.hash_size_mb} min 1 max 4096"
+                )
+                print(
+                    f"option name Threads type spin default {CONFIG.search.threads} min 1 max 128"
+                )
                 print("uciok")
 
             elif cmd == "isready":
@@ -38,7 +41,9 @@ class UCI:
             elif cmd == "ucinewgame":
                 self.engine.stop()
                 self.board = chess.Board()
-                self.engine = SearchEngine(BitboardEvaluator(), depth=CONFIG.search.depth)
+                self.engine = SearchEngine(
+                    BitboardEvaluator(), depth=CONFIG.search.depth
+                )
 
             elif cmd == "position":
                 self._parse_position(tokens[1:])
@@ -82,7 +87,7 @@ class UCI:
 
         # Apply moves
         if idx < len(tokens) and tokens[idx] == "moves":
-            for move_str in tokens[idx + 1:]:
+            for move_str in tokens[idx + 1 :]:
                 try:
                     move = chess.Move.from_uci(move_str)
                     if move in self.board.legal_moves:
@@ -122,7 +127,9 @@ class UCI:
                 print(result)
                 sys.stdout.flush()
 
-        self.engine.start_search(self.board.copy(), depth=depth, callback=on_search_done)
+        self.engine.start_search(
+            self.board.copy(), depth=depth, callback=on_search_done
+        )
 
         # Start a timer to stop the search after movetime
         if movetime is not None:
