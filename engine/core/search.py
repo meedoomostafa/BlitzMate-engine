@@ -335,16 +335,13 @@ class SearchEngine:
         moves_searched = 0
 
         for move in moves:
+            is_cap = board.is_capture(move)
+            gives_check = board.gives_check(move)
             board.push(move)
             moves_searched += 1
             needs_full_search = True
-            if (
-                depth >= 3
-                and moves_searched > 4
-                and not board.is_capture(move)
-                and not board.is_check()
-            ):
-                score = -self._negamax(board, depth - 2, -alpha - 1, -alpha, ply + 1)
+            if depth >= 3 and moves_searched > 4 and not is_cap and not gives_check:
+                score = -self._negamax(board, depth - 2, -alpha-1, -alpha, ply + 1)
                 needs_full_search = score > alpha
 
             if needs_full_search:
@@ -361,7 +358,7 @@ class SearchEngine:
 
             if score > alpha:
                 alpha = score
-                if not board.is_capture(move):
+                if not is_cap:
                     self.history[move.from_square][move.to_square] += depth * depth
                     if move != self.killers[ply][0]:
                         self.killers[ply][1] = self.killers[ply][0]
