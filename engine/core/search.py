@@ -378,8 +378,12 @@ class SearchEngine:
                         self.killers[ply][0] = move
 
                 if alpha >= beta:
-                    self.tt.store(board, depth, beta, TT_BETA, move)
+                    if not self._stop_event.is_set():
+                        self.tt.store(board, depth, beta, TT_BETA, move)
                     return beta
+
+        if self._stop_event.is_set():
+            return best_score
 
         if best_score <= alpha_orig:
             flag = TT_ALPHA
@@ -388,7 +392,8 @@ class SearchEngine:
         else:
             flag = TT_EXACT
 
-        self.tt.store(board, depth, best_score, flag, best_move_found)
+        if not self._stop_event.is_set():
+            self.tt.store(board, depth, best_score, flag, best_move_found)
         return best_score
 
     def _quiescence(
