@@ -280,10 +280,7 @@ class SearchEngine:
     ) -> int:
         self.nodes += 1
         if board.is_repetition(2) or board.halfmove_clock >= 100:
-            current_eval = self.evaluator.evaluate(board)
-            if current_eval > 50:
-                return -50
-            return 0
+            return -10  # -10 (small number) to avoid draws but don't throw away wins
         if self.nodes % 2048 == 0 and self._stop_event.is_set():
             return 0
         if board.is_fivefold_repetition():
