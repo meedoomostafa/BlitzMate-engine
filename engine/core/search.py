@@ -9,16 +9,12 @@ from typing import Optional, Callable, List, Tuple
 
 # from engine.core.loopboard_evaluator import Evaluator
 from engine.core.bitboard_evaluator import BitboardEvaluator as Evaluator
-from engine.core.transposition import TranspositionTable
+from engine.core.transposition import TranspositionTable, TT_EXACT, TT_ALPHA, TT_BETA
 from engine.core.utils import print_info
 
 INF = 1000000
 MATE_SCORE = 900000
 TB_WIN_SCORE = 800000
-
-TT_EXACT = 0
-TT_ALPHA = 1
-TT_BETA = 2
 
 
 class SearchEngine:
@@ -487,23 +483,21 @@ class SearchEngine:
         return alpha
 
     def _order_moves(self, board: chess.Board, tt_move: Optional[chess.Move], ply: int):
-        moves = list(board.legal_moves)
-        scores = []
-        for move in moves:
+        def score_move(move):
             if move == tt_move:
-                scores.append(2000000)
+                return 2000000
             elif board.is_capture(move):
-                scores.append(self._mvv_lva(board, move) + 100000)
+                return self._mvv_lva(board, move) + 100000
             elif move == self.killers[ply][0]:
-                scores.append(90000)
+                return 90000
             elif move == self.killers[ply][1]:
-                scores.append(80000)
+                return 80000
             else:
-                scores.append(self.history[move.from_square][move.to_square])
+                return self.history[move.from_square][move.to_square]
 
-        return [
-            m for _, m in sorted(zip(scores, moves), key=lambda x: x[0], reverse=True)
-        ]
+        moves = list(board.legal_moves)
+        moves.sort(key=score_move, reverse=True)
+        return moves
 
     def _mvv_lva(self, board, move):
         attacker = board.piece_at(move.from_square)

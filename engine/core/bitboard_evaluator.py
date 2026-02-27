@@ -44,6 +44,15 @@ class BitboardEvaluator:
         """
         self.cfg = CONFIG.eval
 
+        # Phase weights for game phase calculation (class-level to avoid re-creation)
+        self.phase_weights = {
+            chess.KNIGHT: 1,
+            chess.BISHOP: 1,
+            chess.ROOK: 2,
+            chess.QUEEN: 4,
+            chess.KING: 0,
+        }
+
         # Pre-compute neighbor masks for Isolated Pawn detection.
         # neighbor_masks[i] contains bits for files adjacent to file i.
         self.neighbor_masks: List[int] = [0] * 8
@@ -136,15 +145,6 @@ class BitboardEvaluator:
         eg_score = 0  # End Game Score
         phase = 0  # Game Phase (0=Endgame, 24=Opening)
 
-        # Iterate over piece types (excluding pawns)
-        phase_weights = {
-            chess.KNIGHT: 1,
-            chess.BISHOP: 1,
-            chess.ROOK: 2,
-            chess.QUEEN: 4,
-            chess.KING: 0,
-        }
-
         for pt in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, chess.KING]:
             p_name = chess.piece_name(pt).upper()
             mg_val = self.cfg.MATERIAL_MG.get(p_name, 0)
@@ -156,7 +156,7 @@ class BitboardEvaluator:
             # Evaluate White Pieces
             squares = board.pieces(pt, chess.WHITE)
             count = len(squares)
-            phase += count * phase_weights[pt]
+            phase += count * self.phase_weights[pt]
 
             mg_score += count * mg_val
             eg_score += count * eg_val
@@ -171,7 +171,7 @@ class BitboardEvaluator:
             # Evaluate Black Pieces
             squares = board.pieces(pt, chess.BLACK)
             count = len(squares)
-            phase += count * phase_weights[pt]
+            phase += count * self.phase_weights[pt]
 
             mg_score -= count * mg_val
             eg_score -= count * eg_val
