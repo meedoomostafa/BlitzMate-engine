@@ -267,11 +267,11 @@ class SearchEngine:
             pv_moves.append(move)
             curr_board.push(move)
 
-            # cycle detection
-            fen = curr_board.fen()
-            if fen in seen_hashes:
+            # cycle detection via zobrist hash (faster than fen())
+            h = polyglot.zobrist_hash(curr_board)
+            if h in seen_hashes:
                 break
-            seen_hashes.add(fen)
+            seen_hashes.add(h)
 
         return pv_moves
 
