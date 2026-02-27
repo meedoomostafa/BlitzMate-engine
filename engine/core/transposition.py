@@ -19,12 +19,22 @@ class TTEntry:
 
 class TranspositionTable:
     def __init__(self, size_mb=64):
+        # ~48 bytes per entry (object overhead + slots)
+        entry_size = 48
+        self.max_entries = max(1, (size_mb * 1024 * 1024) // entry_size)
         self.table = {}
-
+    
     def get(self, board):
         key = chess.polyglot.zobrist_hash(board)
-        return self.table.get(key)
-
+        return self.table.get(key % self.max_entries)
+        
     def store(self, board, depth, value, flag, best_move):
         key = chess.polyglot.zobrist_hash(board)
-        self.table[key] = TTEntry(depth, value, flag, best_move)
+        idx = key % self.max_entries
+        existing = self.table.get(idx)
+        # Depth-preferred replacement: only overwrite with equal or deeper search
+        if existing is None or depth >= existing.depth:
+            self.table[idx] = TTEntry(depth, value, flag, best_move)
+    
+    def clear(self):
+        self.table.clear()
