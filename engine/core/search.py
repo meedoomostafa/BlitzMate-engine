@@ -45,7 +45,7 @@ class SearchEngine:
         ]
 
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        syzygy_path = os.path.join(base_dir, "../assets/syzygy/wdl")
+        syzygy_path = os.path.join(base_dir, "../assets/syzygy")
         self.tablebase = None
 
         if os.path.exists(syzygy_path):
@@ -74,11 +74,7 @@ class SearchEngine:
         Probes the Syzygy tablebase for the best move based on DTZ (Distance To Zero).
         Returns None if TB is unavailable, piece count > 5, or probing fails.
         """
-        if (
-            not self.tablebase
-            or chess.popcount(board.occupied) >= 5
-            or board.castling_rights != 0
-        ):
+        if not self.tablebase or chess.popcount(board.occupied) > 5 or board.castling_rights != 0:
             return None
 
         try:
