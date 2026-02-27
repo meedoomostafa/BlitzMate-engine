@@ -378,24 +378,27 @@ class SearchEngine:
         self.tt.store(board, depth, best_score, flag, best_move_found)
         return best_score
 
-    def _quiescence(self, board: chess.Board, alpha: int, beta: int) -> int:
-        if self._stop_event.is_set():
-            return 0
+    def _quiescence(self, board: chess.Board, alpha: int, beta: int, qs_depth: int = 0) -> int:
+        if self._stop_event.is_set(): return 0
+        if qs_depth > 30: return self.evaluator.evaluate(board)
+        
+        in_check = board.is_check()
+        
+        if not in_check:
+            stand_pat = self.evaluator.evaluate(board)
+            if stand_pat >= beta: return beta
+            if stand_pat < alpha - 900: return alpha
+            if stand_pat > alpha: alpha = stand_pat
+            moves = list(board.generate_legal_captures())
+        else:
+            # In check: must search all evasions, not just captures
+            moves = list(board.legal_moves)
 
-        stand_pat = self.evaluator.evaluate(board)
-        if stand_pat >= beta:
-            return beta
-        if stand_pat < alpha - 900:
-            return alpha
-        if stand_pat > alpha:
-            alpha = stand_pat
-
-        moves = list(board.generate_legal_captures())
         moves.sort(key=lambda m: self._mvv_lva(board, m), reverse=True)
 
         for move in moves:
             board.push(move)
-            score = -self._quiescence(board, -beta, -alpha)
+            score = -self._quiescence(board, -beta, -alpha, qs_depth + 1)
             board.pop()
             if score >= beta:
                 return beta
