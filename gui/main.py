@@ -87,9 +87,6 @@ class ChessGUI:
         
         # Thread-safe queue for engine results
         self._engine_queue = queue.Queue()
-        
-        # Engine Event
-        self.ENGINE_MOVE_EVENT = pygame.USEREVENT + 1
 
     def load_pieces(self):
         pieces = {}
@@ -494,9 +491,6 @@ class ChessGUI:
                                     self.handle_premove(move)
 
                         self.dragging_sq = None
-
-                elif event.type == self.ENGINE_MOVE_EVENT:
-                    pass  # Handled via queue above
 
         pygame.quit()
 
