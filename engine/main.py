@@ -4,7 +4,7 @@ from engine.core.bitboard_evaluator import BitboardEvaluator
 
 
 class Engine:
-    def __init__(self, depth=3):
+    def __init__(self, depth=6):
         self.board = ChessBoard()
         self.search = SearchEngine(BitboardEvaluator(), depth=depth)
 

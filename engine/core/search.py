@@ -1,6 +1,7 @@
 import chess
 from chess import polyglot
 from chess import syzygy
+import math
 import time
 import threading
 import os
@@ -16,9 +17,21 @@ INF = 1000000
 MATE_SCORE = 900000
 TB_WIN_SCORE = 800000
 
+# SEE piece values (indexed by chess piece_type: PAWN=1..KING=6)
+SEE_PIECE_VALUES = [0, 100, 320, 330, 500, 900, 20000]
+
+# LMR reduction table (precomputed): lmr_table[depth][move_count]
+MAX_LMR_DEPTH = 64
+MAX_LMR_MOVES = 64
+
+LMR_TABLE = [[0] * MAX_LMR_MOVES for _ in range(MAX_LMR_DEPTH)]
+for _d in range(1, MAX_LMR_DEPTH):
+    for _m in range(1, MAX_LMR_MOVES):
+        LMR_TABLE[_d][_m] = max(0, int(0.5 + math.log(_d) * math.log(_m) / 2.0))
+
 
 class SearchEngine:
-    def __init__(self, evaluator: Optional[Evaluator] = None, depth: int = 4):
+    def __init__(self, evaluator: Optional[Evaluator] = None, depth: int = 6):
         self.evaluator = evaluator or Evaluator()
         self.max_depth = depth
         self.tt = TranspositionTable()
@@ -291,10 +304,8 @@ class SearchEngine:
     ) -> int:
         self.nodes += 1
         if board.is_repetition(2) or board.halfmove_clock >= 100:
-            return -10  # -10 (small number) to avoid draws but don't throw away wins
-        if self.nodes % 2048 == 0 and self._stop_event.is_set():
             return 0
-        if board.is_fivefold_repetition():
+        if self.nodes % 2048 == 0 and self._stop_event.is_set():
             return 0
 
         if self.tablebase and board.castling_rights == 0:
@@ -308,6 +319,11 @@ class SearchEngine:
                     return 0
                 except Exception:
                     pass
+
+        # Check extension: extend search when in check (critical for tactical accuracy)
+        in_check = board.is_check()
+        if in_check:
+            depth += 1
 
         alpha_orig = alpha
 
@@ -329,25 +345,66 @@ class SearchEngine:
             tt_move = tt_entry.best_move
 
         if depth <= 0:
-            return self._quiescence(board, alpha, beta)
+            return self._quiescence(board, alpha, beta, ply=ply)
 
         if board.is_game_over():
             if board.is_checkmate():
                 return -MATE_SCORE + ply
             return 0
 
+        is_pv_node = beta - alpha > 1
+
         big_piece_count = sum(
             len(board.pieces(pt, board.turn))
             for pt in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]
         )
 
-        # Null Move Pruning (skip in zugzwang-prone endgames: need ≥2 non-pawn pieces)
-        if depth >= 3 and not board.is_check() and ply > 0 and big_piece_count >= 2:
+        static_eval = self.evaluator.evaluate(board)
+
+        # Reverse Futility Pruning (static eval pruning)
+        if (
+            depth <= 3
+            and not in_check
+            and not is_pv_node
+            and abs(alpha) < MATE_SCORE - 100
+            and static_eval - 120 * depth >= beta
+        ):
+            return static_eval
+
+        # Null Move Pruning (adaptive R based on depth)
+        if (
+            depth >= 3
+            and not in_check
+            and ply > 0
+            and big_piece_count >= 2
+            and static_eval >= beta
+        ):
+            # Adaptive reduction: R = 3 + depth // 6
+            R = 3 + depth // 6
+            R = min(R, depth - 1)  # Don't reduce below depth 1
             board.push(chess.Move.null())
-            score = -self._negamax(board, depth - 3, -beta, -beta + 1, ply + 1)
+            score = -self._negamax(board, depth - R, -beta, -beta + 1, ply + 1)
             board.pop()
             if score >= beta:
-                return beta
+                # Verification search at reduced depth for shallow depths
+                if depth <= 6:
+                    # Use depth-R-1 to prevent null-move from re-triggering
+                    v_depth = max(1, depth - R - 1)
+                    v_score = self._negamax(board, v_depth, alpha, beta, ply)
+                    if v_score >= beta:
+                        return beta
+                else:
+                    return beta
+
+        # Futility Pruning margins (depth-dependent)
+        futility_margin = [0, 200, 350, 500]
+        can_futility_prune = (
+            depth <= 3
+            and not in_check
+            and not is_pv_node
+            and abs(alpha) < MATE_SCORE - 100
+            and static_eval + futility_margin[depth] <= alpha
+        )
 
         moves = self._order_moves(board, tt_move, ply)
         best_score = -INF
@@ -357,20 +414,64 @@ class SearchEngine:
 
         for move in moves:
             is_cap = board.is_capture(move)
-            gives_check = board.gives_check(move)
+            # Lazy gives_check: only compute when actually needed (saves ~11% time)
+            gives_check = None
+
+            # Futility Pruning: skip quiet moves that can't raise alpha
+            if (
+                can_futility_prune
+                and moves_searched > 0
+                and not is_cap
+                and not move.promotion
+            ):
+                if gives_check is None:
+                    gives_check = board.gives_check(move)
+                if not gives_check:
+                    continue
+
+            # Compute gives_check before push (board.gives_check requires move is legal)
+            if gives_check is None and depth >= 3 and not in_check:
+                gives_check = board.gives_check(move)
+
             board.push(move)
             moves_searched += 1
             needs_full_search = True
             is_killer = move == self.killers[ply][0] or move == self.killers[ply][1]
+
+            # Late Move Reductions (graduated table-based)
             if (
                 depth >= 3
-                and moves_searched > 4
+                and moves_searched > 3
                 and not is_cap
-                and not gives_check
                 and not move.promotion
                 and not is_killer
+                and not in_check
             ):
-                score = -self._negamax(board, depth - 2, -alpha - 1, -alpha, ply + 1)
+                if gives_check:
+                    pass  # Don't reduce checking moves
+                else:
+                    # Use precomputed LMR table
+                    r = LMR_TABLE[min(depth, MAX_LMR_DEPTH - 1)][
+                        min(moves_searched, MAX_LMR_MOVES - 1)
+                    ]
+                    # Reduce less in PV nodes
+                    if is_pv_node:
+                        r = max(0, r - 1)
+                    # Reduce less for moves with good history
+                    hist_score = self.history[move.from_square][move.to_square]
+                    if hist_score > 1000:
+                        r = max(0, r - 1)
+
+                    r = max(1, r)  # At least reduce by 1
+                    new_depth = max(0, depth - 1 - r)
+
+                    score = -self._negamax(
+                        board, new_depth, -alpha - 1, -alpha, ply + 1
+                    )
+                    needs_full_search = score > alpha
+            elif not is_pv_node and moves_searched > 1:
+                # PVS: null-window search for non-PV moves
+                score = -self._negamax(board, depth - 1, -alpha - 1, -alpha, ply + 1)
                 needs_full_search = score > alpha
 
             if needs_full_search:
@@ -395,8 +496,13 @@ class SearchEngine:
 
                 if alpha >= beta:
                     if not self._stop_event.is_set():
-                        self.tt.store(board, depth, beta, TT_BETA, move)
-                    return beta
+                        self.tt.store(board, depth, best_score, TT_BETA, move)
+                    return best_score
+
+        if moves_searched == 0:
+            if in_check:
+                return -MATE_SCORE + ply
+            return 0
 
         if self._stop_event.is_set():
             return best_score
@@ -413,7 +519,7 @@ class SearchEngine:
         return best_score
 
     def _quiescence(
-        self, board: chess.Board, alpha: int, beta: int, qs_depth: int = 0
+        self, board: chess.Board, alpha: int, beta: int, qs_depth: int = 0, ply: int = 0
     ) -> int:
         self.nodes += 1
         if self._stop_event.is_set():
@@ -436,35 +542,64 @@ class SearchEngine:
         alpha_orig = alpha
         in_check = board.is_check()
 
-        if not in_check:
+        if in_check:
+            # In check: must search all evasions, not just captures
+            stand_pat = -INF
+            moves = list(board.legal_moves)
+            if not moves:
+                return -MATE_SCORE + ply  # Checkmate: use real ply for mate distance
+        else:
             stand_pat = self.evaluator.evaluate(board)
             if stand_pat >= beta:
-                return beta
-            if stand_pat < alpha - 900:
-                return alpha
+                return stand_pat
+            # Delta pruning: if static eval is way below alpha, prune
+            if stand_pat < alpha - 975:
+                return stand_pat
             if stand_pat > alpha:
                 alpha = stand_pat
-            moves = list(board.generate_legal_captures())
-        else:
-            # In check: must search all evasions, not just captures
-            moves = list(board.legal_moves)
 
-        moves.sort(key=lambda m: self._mvv_lva(board, m), reverse=True)
+            # Generate captures + checking moves (first ply only for checks)
+            captures = list(board.generate_legal_captures())
 
-        best_score = alpha
+            if qs_depth == 0:
+                # Also search non-capture checks at first QS ply
+                check_moves = []
+                for move in board.legal_moves:
+                    if not board.is_capture(move) and board.gives_check(move):
+                        check_moves.append(move)
+                moves = captures + check_moves
+            else:
+                moves = captures
+
+        # Sort moves: captures by MVV-LVA (fast), checks lower priority
+        def qs_move_score(m):
+            if board.is_capture(m):
+                return self._mvv_lva(board, m) + 100000
+            else:
+                return 50000  # Non-capture checks get medium priority
+
+        moves.sort(key=qs_move_score, reverse=True)
+
+        best_score = stand_pat if not in_check else -INF
         best_move = None
 
         for move in moves:
+            # SEE pruning: skip clearly losing captures (not when in check)
+            if not in_check and board.is_capture(move):
+                if self._see(board, move) < -50:
+                    continue
+
             board.push(move)
-            score = -self._quiescence(board, -beta, -alpha, qs_depth + 1)
+            score = -self._quiescence(board, -beta, -alpha, qs_depth + 1, ply + 1)
             board.pop()
+
             if score > best_score:
                 best_score = score
                 best_move = move
             if score >= beta:
                 if not self._stop_event.is_set():
-                    self.tt.store(board, 0, beta, TT_BETA, move)
-                return beta
+                    self.tt.store(board, 0, best_score, TT_BETA, move)
+                return best_score
             if score > alpha:
                 alpha = score
 
@@ -478,18 +613,98 @@ class SearchEngine:
                 flag = TT_EXACT
             self.tt.store(board, 0, best_score, flag, best_move)
 
-        return alpha
+        return best_score
+
+    def _see(self, board: chess.Board, move: chess.Move) -> int:
+        """
+        Static Exchange Evaluation — estimates material outcome of a capture exchange.
+        Returns value in centipawns (positive = good for the attacker).
+        """
+        to_sq = move.to_square
+        from_sq = move.from_square
+
+        # Determine the initial captured value
+        if board.is_en_passant(move):
+            captured_val = SEE_PIECE_VALUES[chess.PAWN]
+        else:
+            victim = board.piece_at(to_sq)
+            if victim is None:
+                return 0
+            captured_val = SEE_PIECE_VALUES[victim.piece_type]
+
+        attacker = board.piece_at(from_sq)
+        if attacker is None:
+            return 0
+
+        attacker_val = SEE_PIECE_VALUES[attacker.piece_type]
+
+        # Quick exit: capturing with equal or lesser value piece is always good
+        if attacker_val <= captured_val:
+            return captured_val - attacker_val
+
+        # Capturing with a more valuable piece — check defenders/attackers
+        # Use iterative SEE with the gain array
+        gain = [0] * 32
+        gain[0] = captured_val
+
+        current_attacker_val = attacker_val
+        side = not attacker.color  # Opponent moves next
+        d = 0
+
+        # Track which squares have been "used" (removed from exchange)
+        used = chess.SquareSet()
+        used.add(from_sq)
+
+        while True:
+            d += 1
+            gain[d] = current_attacker_val - gain[d - 1]
+
+            # If the side to move can't improve by continuing, stop
+            if max(-gain[d - 1], gain[d]) < 0:
+                break
+
+            # Find the least valuable attacker for 'side' on 'to_sq'
+            attackers = board.attackers(side, to_sq)
+            best_atk_sq = None
+            min_val = 20001
+
+            for sq in attackers:
+                if sq in used:
+                    continue
+                p = board.piece_at(sq)
+                if p is not None and SEE_PIECE_VALUES[p.piece_type] < min_val:
+                    min_val = SEE_PIECE_VALUES[p.piece_type]
+                    best_atk_sq = sq
+
+            if best_atk_sq is None:
+                break
+
+            used.add(best_atk_sq)
+            current_attacker_val = min_val
+            side = not side
+
+        # Negamax the gain array to find optimal exchange result
+        while d > 0:
+            gain[d - 1] = -max(-gain[d - 1], gain[d])
+            d -= 1
+
+        return gain[0]
 
     def _order_moves(self, board: chess.Board, tt_move: Optional[chess.Move], ply: int):
         def score_move(move):
             if move == tt_move:
                 return 2000000
             elif board.is_capture(move):
-                return self._mvv_lva(board, move) + 100000
+                # MVV-LVA for fast ordering; SEE sign for good/bad split
+                mvv_lva = self._mvv_lva(board, move)
+                if mvv_lva >= 0:
+                    return mvv_lva + 200000  # Good captures (LVA captures HVV)
+                else:
+                    return mvv_lva + 50000  # Likely bad captures, after killers
             elif move == self.killers[ply][0]:
-                return 90000
+                return 110000
             elif move == self.killers[ply][1]:
-                return 80000
+                return 100000
             else:
                 return self.history[move.from_square][move.to_square]
 

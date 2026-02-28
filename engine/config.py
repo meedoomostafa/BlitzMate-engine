@@ -18,7 +18,7 @@ PIECE_VALUES = {
 
 @dataclass
 class SearchConfig:
-    depth: int = 5
+    depth: int = 6
     iterative_deepening: bool = True
     time_limit_ms: Optional[int] = None
     hash_size_mb: int = 64
@@ -125,24 +125,94 @@ class EvalConfig:
         ]
     )
 
+    # Knight Endgame: centralization is critical, edges are terrible
+    PST_KNIGHT_EG: List[int] = field(
+        default_factory=lambda: [
+            -50,
+            -40,
+            -30,
+            -30,
+            -30,
+            -30,
+            -40,
+            -50,
+            -40,
+            -20,
+            0,
+            5,
+            5,
+            0,
+            -20,
+            -40,
+            -30,
+            0,
+            10,
+            15,
+            15,
+            10,
+            0,
+            -30,
+            -30,
+            5,
+            15,
+            20,
+            20,
+            15,
+            5,
+            -30,
+            -30,
+            5,
+            15,
+            20,
+            20,
+            15,
+            5,
+            -30,
+            -30,
+            0,
+            10,
+            15,
+            15,
+            10,
+            0,
+            -30,
+            -40,
+            -20,
+            0,
+            5,
+            5,
+            0,
+            -20,
+            -40,
+            -50,
+            -40,
+            -30,
+            -30,
+            -30,
+            -30,
+            -40,
+            -50,
+        ]
+    )
+
     PST_KING_MG: List[int] = field(
         default_factory=lambda: [
-            20,
-            30,
+            -10,
             10,
-            0,
-            0,
-            10,
+            15,
+            -10,
+            -20,
+            -10,
             30,
-            20,
-            20,
-            20,
-            0,
-            0,
-            0,
-            0,
-            20,
-            20,
+            -10,
+            -10,
+            10,
+            -10,
+            -10,
+            -10,
+            -10,
+            10,
+            -10,
             -10,
             -20,
             -20,
@@ -819,11 +889,15 @@ class EvalConfig:
 
     BISHOP_PAIR_BONUS: int = 50
     ROOK_OPEN_FILE_BONUS: int = 25
+    ROOK_SEMI_OPEN_FILE_BONUS: int = 15
     PASSED_PAWN_BONUS: List[int] = field(
         default_factory=lambda: [0, 10, 20, 30, 50, 80, 120, 0]
     )
     ISOLATED_PAWN_PENALTY: int = -20
     DOUBLED_PAWN_PENALTY: int = -20
+    UNDEVELOPED_PENALTY: int = 25
+    KING_OPEN_FILE_PENALTY: int = 25
+    KING_SEMI_OPEN_FILE_PENALTY: int = 15
 
 
 @dataclass
