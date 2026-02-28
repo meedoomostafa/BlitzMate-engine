@@ -1,7 +1,8 @@
+"""Interactive CLI: human (White) vs engine (Black)."""
+
 import chess
 from engine.core.search import SearchEngine
 
-# initialize board and engine
 board = chess.Board()
 engine = SearchEngine(depth=6)
 

@@ -1,9 +1,11 @@
+"""Engine configuration: dataclasses loaded from config.toml."""
+
 import os
-import tomllib  # For Python 3.11+, use 'import toml' if older
+import tomllib
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-# --- Backward Compatibility for old imports ---
+# Legacy piece values (centipawns) for backward compatibility.
 PIECE_VALUES = {
     "PAWN": 100,
     "KNIGHT": 320,
@@ -12,8 +14,6 @@ PIECE_VALUES = {
     "QUEEN": 900,
     "KING": 20000,
 }
-
-# --- Configuration Classes ---
 
 
 @dataclass
@@ -33,7 +33,7 @@ class SearchConfig:
 class EvalConfig:
     use_positional: bool = True
 
-    # Material Values [MiddleGame, EndGame]
+    # Material values (centipawns): middlegame.
     MATERIAL_MG: Dict[str, int] = field(
         default_factory=lambda: {
             "PAWN": 100,
@@ -44,6 +44,7 @@ class EvalConfig:
             "KING": 0,
         }
     )
+    # Material values (centipawns): endgame.
     MATERIAL_EG: Dict[str, int] = field(
         default_factory=lambda: {
             "PAWN": 120,
@@ -55,7 +56,8 @@ class EvalConfig:
         }
     )
 
-    # Piece-Square Tables
+    # Piece-Square Tables (PST): 64-value arrays indexed by square.
+    # Middlegame knight PST.
     PST_KNIGHT_MG: List[int] = field(
         default_factory=lambda: [
             -50,
@@ -125,7 +127,7 @@ class EvalConfig:
         ]
     )
 
-    # Knight Endgame: centralization is critical, edges are terrible
+    # Endgame knight PST.
     PST_KNIGHT_EG: List[int] = field(
         default_factory=lambda: [
             -50,
@@ -470,7 +472,7 @@ class EvalConfig:
         ]
     )
 
-    # BISHOP PST: Avoids corners and edges, loves long diagonals
+    # Middlegame bishop PST.
     PST_BISHOP_MG: List[int] = field(
         default_factory=lambda: [
             -20,
@@ -540,7 +542,7 @@ class EvalConfig:
         ]
     )
 
-    # ROOK PST: Loves the 7th rank and center files
+    # Middlegame rook PST.
     PST_ROOK_MG: List[int] = field(
         default_factory=lambda: [
             0,
@@ -679,7 +681,7 @@ class EvalConfig:
         ]
     )
 
-    # Endgame PSTs
+    # Endgame bishop PST.
     PST_BISHOP_EG: List[int] = field(
         default_factory=lambda: [
             -20,

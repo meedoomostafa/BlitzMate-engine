@@ -1,35 +1,29 @@
-# chess_engine/core/board.py
+"""Board wrapper over python-chess providing move history tracking."""
 
 import chess
 
 
 class ChessBoard:
     def __init__(self, fen: str = None):
-        """
-        Initialize a new chess board.
-        If fen is None, start from the standard opening position.
-        """
+        """Initialize from FEN or the standard starting position."""
         self.board = chess.Board(fen) if fen else chess.Board()
         self.move_history = []
 
     def reset(self):
-        """Reset to initial position."""
+        """Reset to the initial position."""
         self.board.reset()
         self.move_history.clear()
 
     def set_fen(self, fen: str):
-        """Load a board position from FEN string."""
+        """Set board state from a FEN string."""
         self.board.set_fen(fen)
 
     def get_fen(self) -> str:
-        """Return current FEN representation."""
+        """Return the current FEN."""
         return self.board.fen()
 
     def make_move(self, move_str: str) -> bool:
-        """
-        Try to make a move (e.g., 'e2e4').
-        Return True if valid, False if illegal.
-        """
+        """Push a UCI move (e.g. 'e2e4'). Returns True if legal."""
         try:
             move = chess.Move.from_uci(move_str)
             if move in self.board.legal_moves:
@@ -41,19 +35,19 @@ class ChessBoard:
             return False
 
     def undo_move(self):
-        """Undo the last move if exists."""
+        """Pop the last move."""
         if self.move_history:
             self.board.pop()
             self.move_history.pop()
 
     def get_legal_moves(self):
-        """Return all legal moves in UCI format."""
+        """Return legal moves as UCI strings."""
         return [m.uci() for m in self.board.legal_moves]
 
     def is_game_over(self):
-        """Check if game has ended."""
+        """Check if the game has ended."""
         return self.board.is_game_over()
 
     def print_board(self):
-        """Print board in ASCII form."""
+        """Print ASCII representation."""
         print(self.board)

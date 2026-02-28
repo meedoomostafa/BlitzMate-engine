@@ -1,3 +1,5 @@
+"""High-level engine facade wrapping board, evaluator, and search."""
+
 from engine.core.board import ChessBoard
 from engine.core.search import SearchEngine
 from engine.core.bitboard_evaluator import BitboardEvaluator

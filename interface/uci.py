@@ -1,3 +1,5 @@
+"""UCI protocol handler with time management."""
+
 import sys
 import chess
 import threading
@@ -66,6 +68,7 @@ class UCI:
             sys.stdout.flush()
 
     def _parse_position(self, tokens):
+        """Handle 'position startpos/fen ... moves ...' command."""
         idx = 0
         if not tokens:
             return
@@ -74,7 +77,7 @@ class UCI:
             self.board = chess.Board()
             idx = 1
         elif tokens[0] == "fen":
-            # Collect FEN parts (up to 6 tokens after "fen")
+            # Collect FEN tokens.
             fen_parts = []
             idx = 1
             while idx < len(tokens) and tokens[idx] != "moves":
@@ -85,7 +88,7 @@ class UCI:
             except ValueError:
                 return
 
-        # Apply moves
+        # Apply subsequent moves.
         if idx < len(tokens) and tokens[idx] == "moves":
             for move_str in tokens[idx + 1 :]:
                 try:
@@ -96,6 +99,7 @@ class UCI:
                     break
 
     def _parse_go(self, tokens):
+        """Handle 'go depth/movetime/wtime/btime/infinite ...' command."""
         depth = CONFIG.search.depth
         movetime = None
         wtime = None
@@ -147,21 +151,21 @@ class UCI:
             else:
                 i += 1
 
-        # Time management: convert wtime/btime into a movetime budget
+        # Time management: derive movetime budget from clock.
         if movetime is None and (wtime is not None or btime is not None):
             time_left = wtime if self.board.turn == chess.WHITE else btime
             inc = winc if self.board.turn == chess.WHITE else binc
             if time_left is not None and time_left > 0:
-                # Estimate ~30 moves remaining, allocate time_left/30 + increment
+                # Allocate time_left / estimated remaining moves + increment.
                 moves_to_go = max(20, 40 - self.board.fullmove_number)
                 movetime = max(100, time_left // moves_to_go + inc * 3 // 4)
-                # Never use more than 80% of remaining time
+                # Cap at 80% of remaining time.
                 movetime = min(movetime, int(time_left * 0.8))
-                depth = 64  # search until time runs out
+                depth = 64  # Search until time expires.
 
         def on_search_done(best_move, ponder_move, d, score):
-            if d <= 0:  # Search finished
-                # Cancel movetime timer if search ended naturally
+            if d <= 0:  # Search complete.
+                # Cancel timer if search ended before movetime.
                 if self._movetime_timer is not None:
                     self._movetime_timer.cancel()
                     self._movetime_timer = None
@@ -175,7 +179,7 @@ class UCI:
             self.board.copy(), depth=depth, callback=on_search_done
         )
 
-        # Start a timer to stop the search after movetime
+        # Movetime stop timer.
         if movetime is not None:
             if self._movetime_timer is not None:
                 self._movetime_timer.cancel()
@@ -184,7 +188,7 @@ class UCI:
             self._movetime_timer.start()
 
     def _parse_setoption(self, tokens):
-        # setoption name <name> value <value>
+        """Handle 'setoption name <n> value <v>' command."""
         try:
             name_idx = tokens.index("name") + 1
             value_idx = tokens.index("value") + 1
@@ -192,9 +196,9 @@ class UCI:
             value = tokens[value_idx]
 
             if name == "hash":
-                pass  # TT resize not implemented yet
+                pass  # TODO: TT resize.
             elif name == "threads":
-                pass  # Single-threaded for now
+                pass  # TODO: Multi-threaded search.
         except (ValueError, IndexError):
             pass
 

@@ -1,3 +1,5 @@
+"""FastAPI REST interface for the engine."""
+
 import threading
 
 import chess
@@ -11,7 +13,7 @@ from engine.config import CONFIG
 
 app = FastAPI(title=CONFIG.ui.engine_name, version="1.0.0")
 
-# Global engine instance (reused to preserve TT across searches)
+# Shared engine instance (preserves TT across requests).
 engine = SearchEngine(BitboardEvaluator(), depth=CONFIG.search.depth)
 board = chess.Board()
 _board_lock = threading.Lock()

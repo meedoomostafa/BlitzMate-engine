@@ -1,16 +1,4 @@
-"""
-Evaluator Module (Looping Version)
-==================================
-
-A readable, loop-based evaluation function for chess positions.
-Synced with the professional logic of the Bitboard version.
-
-Key Features:
-    - Material & Piece-Square Tables
-    - Mobility (Development incentive)
-    - King Safety (Pawn Shield + Castling Rights)
-    - Threat Detection (Hanging pieces)
-"""
+"""Loop-based static evaluator, functionally equivalent to BitboardEvaluator but more readable."""
 
 import chess
 from engine.config import CONFIG
@@ -21,6 +9,7 @@ class Evaluator:
         self.cfg = CONFIG.eval
 
     def evaluate(self, board: chess.Board) -> int:
+        """Return static eval in centipawns, positive favors side to move."""
         if board.is_insufficient_material():
             return 0
         if board.is_fivefold_repetition():
@@ -28,12 +17,12 @@ class Evaluator:
         if board.is_stalemate():
             return 0
 
-        # Initialize Scores
+        # Phase and score accumulators.
         mg_score = 0
         eg_score = 0
         phase = 0
 
-        # Cache commonly used data
+        # Cache piece data.
         piece_map = board.piece_map()
         white_pawns = board.pieces(chess.PAWN, chess.WHITE)
         black_pawns = board.pieces(chess.PAWN, chess.BLACK)
@@ -42,7 +31,7 @@ class Evaluator:
             pt = piece.piece_type
             color = piece.color
 
-            # Phase Calculation (Non-Pawn Material)
+            # Phase calculation (non-pawn material).
             if pt == chess.KNIGHT:
                 phase += 1
             elif pt == chess.BISHOP:
@@ -52,15 +41,15 @@ class Evaluator:
             elif pt == chess.QUEEN:
                 phase += 4
 
-            # Fetch Config Values
+            # Config values.
             p_name = chess.piece_name(pt).upper()
             mg_val = self.cfg.MATERIAL_MG.get(p_name, 0)
             eg_val = self.cfg.MATERIAL_EG.get(p_name, 0)
 
-            # Fetch PST Table
+            # PST lookup.
             pst_sq = sq if color == chess.WHITE else chess.square_mirror(sq)
 
-            # Safe attribute access
+            # Safe attribute access.
             table_mg = getattr(self.cfg, f"PST_{p_name}_MG", None)
             table_eg = getattr(self.cfg, f"PST_{p_name}_EG", None)
 
@@ -75,7 +64,7 @@ class Evaluator:
                 mg_score -= mg_val + pst_mg
                 eg_score -= eg_val + pst_eg
 
-        # Bishop Pair
+        # Bishop pair.
         if len(board.pieces(chess.BISHOP, chess.WHITE)) >= 2:
             mg_score += self.cfg.BISHOP_PAIR_BONUS
             eg_score += self.cfg.BISHOP_PAIR_BONUS
@@ -83,33 +72,32 @@ class Evaluator:
             mg_score -= self.cfg.BISHOP_PAIR_BONUS
             eg_score -= self.cfg.BISHOP_PAIR_BONUS
 
-        # Pawn Structure (Passed, Isolated)
-        # Calculate raw score for white and black
+        # Pawn structure.
         w_pawn_score = self._eval_pawns(board, white_pawns, chess.WHITE)
         b_pawn_score = self._eval_pawns(board, black_pawns, chess.BLACK)
 
-        # Distribute: 50% in MG, 100% in EG
+        # Distribute: 50% in MG, 100% in EG.
         mg_score += int(w_pawn_score * 0.5)
         mg_score -= int(b_pawn_score * 0.5)
         eg_score += int(w_pawn_score * 1.0)
         eg_score -= int(b_pawn_score * 1.0)
 
-        # Mobility (Encourage Development)
+        # Mobility.
         mob_score = self._eval_mobility(board)
         mg_score += mob_score
         eg_score += mob_score
 
-        # King Safety (MG Priority)
+        # King safety (primarily middlegame).
         ks_score = self._eval_king_safety(board)
         mg_score += ks_score
         eg_score += int(ks_score * 0.2)
 
-        # Threat Detection
+        # Threats.
         threat_score = self._eval_threats(board, piece_map)
         mg_score += threat_score
         eg_score += threat_score
 
-        # --- 3. Tapered Evaluation Blending ---
+        # Tapered eval.
         phase = min(phase, 24)
         final_score = (mg_score * phase + eg_score * (24 - phase)) // 24
 
@@ -119,14 +107,13 @@ class Evaluator:
         return final_score
 
     def _eval_pawns(self, board, pawns, color):
-        """Calculates score for Isolated and Passed pawns."""
+        """Score isolated and passed pawns."""
         score = 0
         for sq in pawns:
             file = chess.square_file(sq)
             rank = chess.square_rank(sq)
 
-            # Isolated Pawn Check
-            # Check adjacent files for friendly pawns
+            # Isolated pawn check.
             is_isolated = True
             if file > 0:
                 for r in range(8):
@@ -144,7 +131,7 @@ class Evaluator:
             if is_isolated:
                 score += self.cfg.ISOLATED_PAWN_PENALTY
 
-            # Passed Pawn Check
+            # Passed pawn check.
             if self._is_passed(board, sq, color):
                 relative_rank = rank if color == chess.WHITE else 7 - rank
                 if 0 <= relative_rank < 8:
@@ -153,7 +140,7 @@ class Evaluator:
         return score
 
     def _is_passed(self, board, sq, color):
-        """Helper to check if a pawn has no enemy pawns ahead of it."""
+        """True if no enemy pawns block promotion path."""
         file = chess.square_file(sq)
         rank = chess.square_rank(sq)
         enemy_pawn = chess.Piece(chess.PAWN, not color)
@@ -169,10 +156,7 @@ class Evaluator:
         return True
 
     def _eval_mobility(self, board: chess.Board) -> int:
-        """
-        Rewards pieces for having many legal moves (attacks).
-        Encourages active play.
-        """
+        """Reward pieces for having many attack squares."""
         score = 0
         MOBILITY_WEIGHTS = {
             chess.KNIGHT: 10,
@@ -181,7 +165,7 @@ class Evaluator:
             chess.QUEEN: 3,
         }
 
-        # Iterate over all piece types except Pawn/King
+        # Non-pawn, non-king pieces.
         for pt in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]:
             # White Mobility
             for sq in board.pieces(pt, chess.WHITE):
@@ -197,12 +181,7 @@ class Evaluator:
         return score
 
     def _eval_king_safety(self, board: chess.Board) -> int:
-        """
-        Evaluates King Safety:
-        - Penalties for lost castling rights.
-        - Penalties for King wandering in Middle Game.
-        - Penalties for missing pawn shield.
-        """
+        """Penalize lost castling rights, king drift, and missing pawn shield."""
         score = 0
         MISSING_SHIELD_PENALTY = 20
         LOST_CASTLING_PENALTY = 40
@@ -257,7 +236,7 @@ class Evaluator:
         return score
 
     def _get_shield_squares(self, king_sq, color):
-        """Helper to get the 3 squares in front of the king."""
+        """Return the three squares directly in front of the king."""
         squares = []
         f, r = chess.square_file(king_sq), chess.square_rank(king_sq)
 
@@ -265,19 +244,16 @@ class Evaluator:
         front_r = r + 1 if color == chess.WHITE else r - 1
 
         if 0 <= front_r <= 7:
-            for df in [-1, 0, 1]:  # Left, Center, Right files
+            for df in [-1, 0, 1]:
                 if 0 <= f + df <= 7:
                     squares.append(chess.square(f + df, front_r))
         return squares
 
     def _eval_threats(self, board: chess.Board, piece_map: dict) -> int:
-        """
-        Detects hanging pieces and bad trades.
-        Returns score adjustment from White's perspective.
-        """
+        """Detect hanging pieces and pawn-attack threats."""
         score = 0
 
-        # Reduced values for threat calculation to prevent evaluation explosion
+        # Reduced threat weights to prevent evaluation explosion.
         THREAT_WEIGHTS = {
             chess.PAWN: 10,
             chess.KNIGHT: 30,
@@ -294,7 +270,7 @@ class Evaluator:
             attackers = board.attackers(not piece.color, sq)
 
             if attackers:
-                # 1. Attacked by Pawn
+                # 1. Attacked by pawn.
                 if piece.piece_type > chess.PAWN:
                     attacked_by_pawn = False
                     for atk_sq in attackers:
@@ -307,7 +283,7 @@ class Evaluator:
                         penalty = 40
                         score += penalty if piece.color == chess.BLACK else -penalty
 
-                # 2. Hanging Piece
+                # 2. Hanging piece.
                 defenders = board.attackers(piece.color, sq)
                 if len(attackers) > len(defenders) or len(defenders) == 0:
                     val = THREAT_WEIGHTS[piece.piece_type]

@@ -1,48 +1,25 @@
-# ===============================
-# BlitzMate Chess Engine Config
-# ===============================
+# BlitzMate Engine Configuration
 
-# -------------------------------
-# Search settings
-# -------------------------------
+# Search settings.
 [search]
-# Default search depth (4–8 typical for debug, 12–18 for full play)
 depth = 6
-
-# Enable iterative deepening search
 iterative_deepening = true
-
-# Optional: time limit in milliseconds per move
 time_limit_ms = 2000
-
-# Hash table memory in MB
 hash_size_mb = 128
-
-# Number of search threads
 threads = 2
-
-# Quiescence search settings
 use_quiescence = true
 q_max_depth = 64
-
-# Null move pruning (speed up search by skipping hopeless moves)
 use_null_move = true
 null_move_reduction = 2
-
-# Randomize among equal best moves (0.0 = deterministic)
-randomize_ties = 0.05
+randomize_ties = 0.05  # 0.0 = deterministic
 
 
-# -------------------------------
-# Evaluation settings
-# -------------------------------
+# Evaluation settings.
 [eval]
 use_positional = true
-
-# Optional: path to positional tables (PSTs)
 positional_table_path = "data/pst_tables.json"
 
-# Material piece values (centipawns)
+# Material values (centipawns).
 [eval.piece_values]
 PAWN = 100
 KNIGHT = 320
@@ -51,7 +28,7 @@ ROOK = 500
 QUEEN = 900
 KING = 20000
 
-# Mobility weights (how much piece activity counts)
+# Mobility weights per piece type.
 [eval.mobility_weights]
 PAWN = 5.0
 KNIGHT = 15.0
@@ -60,7 +37,7 @@ ROOK = 8.0
 QUEEN = 10.0
 KING = 3.0
 
-# Threat / attack weights (bonus for attacking valuable pieces)
+# Threat bonuses for attacking higher-value pieces.
 [eval.threat_attack_weights]
 PAWN = 25
 KNIGHT = 50
@@ -68,22 +45,20 @@ BISHOP = 50
 ROOK = 80
 QUEEN = 140
 
-# Pawn structure penalties/bonuses
+# Pawn structure scoring.
 [eval.pawn_structure_weights]
 doubled_penalty = 30
 isolated_penalty = 20
 passed_bonus = 60
 
-# King safety parameters
+# King safety parameters.
 [eval.king_safety_weights]
 pawn_shield_factor = 0.15
 attacker_base = 1.0
 defender_base = 0.7
 
 
-# -------------------------------
-# Analyzer thresholds
-# -------------------------------
+# Move classification thresholds (centipawns).
 [analyzer]
 TH_BRILLIANT = -50
 TH_BEST = 50
@@ -92,9 +67,7 @@ TH_INACCURACY = 300
 TH_MISTAKE = 600
 
 
-# -------------------------------
-# UI / UCI Interface
-# -------------------------------
+# Engine identity.
 [ui]
 engine_name = "BlitzMate"
 engine_author = "Medo"

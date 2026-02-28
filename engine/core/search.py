@@ -1,3 +1,5 @@
+"""Negamax search engine with iterative deepening, LMR, null-move pruning, and quiescence."""
+
 import chess
 from chess import polyglot
 from chess import syzygy
@@ -8,7 +10,6 @@ import os
 from collections import defaultdict
 from typing import Optional, Callable, List, Tuple
 
-# from engine.core.loopboard_evaluator import Evaluator
 from engine.core.bitboard_evaluator import BitboardEvaluator as Evaluator
 from engine.core.transposition import TranspositionTable, TT_EXACT, TT_ALPHA, TT_BETA
 from engine.core.utils import print_info
@@ -17,10 +18,10 @@ INF = 1000000
 MATE_SCORE = 900000
 TB_WIN_SCORE = 800000
 
-# SEE piece values (indexed by chess piece_type: PAWN=1..KING=6)
+# SEE piece values indexed by chess.piece_type (PAWN=1 .. KING=6).
 SEE_PIECE_VALUES = [0, 100, 320, 330, 500, 900, 20000]
 
-# LMR reduction table (precomputed): lmr_table[depth][move_count]
+# Precomputed LMR reduction table: LMR_TABLE[depth][move_index].
 MAX_LMR_DEPTH = 64
 MAX_LMR_MOVES = 64
 
@@ -63,7 +64,7 @@ class SearchEngine:
                 pass
 
     def get_book_move(self, board: chess.Board) -> Optional[chess.Move]:
-        """Check if the current position is in the opening book."""
+        """Probe opening books for a weighted random move. Returns None on miss."""
         for book_path in self.book_paths:
             if os.path.exists(book_path):
                 try:
@@ -78,10 +79,7 @@ class SearchEngine:
         return None
 
     def get_syzygy_move(self, board: chess.Board) -> Optional[chess.Move]:
-        """
-        Probes the Syzygy tablebase for the best move based on DTZ (Distance To Zero).
-        Returns None if TB is unavailable, piece count > 5, or probing fails.
-        """
+        """Probe Syzygy tablebases (<=5 pieces, no castling). Returns best DTZ move or None."""
         if (
             not self.tablebase
             or chess.popcount(board.occupied) > 5
@@ -94,7 +92,7 @@ class SearchEngine:
         except Exception:
             return None
 
-        candidates = []  # List of tuples: (move, dtz_score)
+        candidates = []
 
         for move in board.legal_moves:
             board.push(move)
@@ -106,7 +104,7 @@ class SearchEngine:
                     is_valid_transition = outcome < 0
                 elif root_wdl < 0:
                     is_valid_transition = (
-                        True  # Already lost, just find the longest death
+                        True  # Already losing; maximize DTZ to delay.
                     )
                 else:
                     is_valid_transition = outcome == 0
@@ -124,11 +122,11 @@ class SearchEngine:
         if not candidates:
             return None
 
-        if root_wdl > 0:  # Winning — pick fastest win (least negative DTZ)
+        if root_wdl > 0:  # Winning: fastest conversion.
             candidates.sort(key=lambda x: x[1], reverse=True)
-        elif root_wdl < 0:  # Losing — pick slowest loss (largest DTZ)
+        elif root_wdl < 0:  # Losing: slowest loss.
             candidates.sort(key=lambda x: x[1], reverse=True)
-        else:  # Draw — stay closest to zero
+        else:  # Drawn: stay near zero.
             candidates.sort(key=lambda x: abs(x[1]))
 
         best_move = candidates[0][0]
@@ -156,16 +154,16 @@ class SearchEngine:
         ponder_move = None
         best_score = 0
 
-        # Age history scores to prevent stale ordering
+        # Age history scores to prevent stale move ordering.
         for from_sq in self.history:
             for to_sq in self.history[from_sq]:
                 self.history[from_sq][to_sq] //= 2
-        # Reset killers
+
         self.killers = defaultdict(lambda: [None, None])
 
         start_time = time.time()
 
-        # Iterative Deepening with Aspiration Windows
+        # Iterative deepening with aspiration windows.
         ASPIRATION_WINDOW = 50
         prev_score = 0
 
@@ -173,13 +171,13 @@ class SearchEngine:
             if self._stop_event.is_set():
                 break
 
-            # Use aspiration windows from depth 4+
+            # Aspiration windows from depth 4+.
             if d >= 4:
                 asp_alpha = prev_score - ASPIRATION_WINDOW
                 asp_beta = prev_score + ASPIRATION_WINDOW
                 score = self._negamax(search_board, d, asp_alpha, asp_beta, 0)
 
-                # Re-search with full window on fail
+                # Re-search with full window on fail.
                 if not self._stop_event.is_set() and (
                     score <= asp_alpha or score >= asp_beta
                 ):
@@ -191,7 +189,7 @@ class SearchEngine:
             best_score = score
             prev_score = score
 
-            # Fetch Best Move
+            # Retrieve best move from TT.
             entry = self.tt.get(search_board)
             if entry and entry.best_move:
                 best_move = entry.best_move
@@ -246,7 +244,7 @@ class SearchEngine:
                 if entry:
                     best_move = entry.best_move
 
-                # Print to terminal for debugging
+                # Print to stdout for debugging.
                 pv_moves = self._get_pv_line(search_board, d)
                 if len(pv_moves) > 0:
                     best_move = pv_moves[0]
@@ -273,11 +271,10 @@ class SearchEngine:
             self._thread.join(timeout=0.2)
 
     def _get_pv_line(self, board: chess.Board, depth: int) -> List[chess.Move]:
+        """Extract the principal variation from the TT."""
         pv_moves = []
         curr_board = board.copy()
-
-        # Avoid infinite loops (max depth or repetition)
-        seen_hashes = set()
+        seen_hashes = set()  # Cycle detection.
 
         for _ in range(depth):
             entry = self.tt.get(curr_board)
@@ -291,7 +288,7 @@ class SearchEngine:
             pv_moves.append(move)
             curr_board.push(move)
 
-            # cycle detection via zobrist hash (faster than fen())
+            # Cycle detection via Zobrist hash.
             h = polyglot.zobrist_hash(curr_board)
             if h in seen_hashes:
                 break
@@ -320,7 +317,7 @@ class SearchEngine:
                 except Exception:
                     pass
 
-        # Check extension: extend search when in check (critical for tactical accuracy)
+        # Check extension: extend depth when in check.
         in_check = board.is_check()
         if in_check:
             depth += 1
@@ -361,7 +358,7 @@ class SearchEngine:
 
         static_eval = self.evaluator.evaluate(board)
 
-        # Reverse Futility Pruning (static eval pruning)
+        # Reverse futility pruning.
         if (
             depth <= 3
             and not in_check
@@ -371,7 +368,7 @@ class SearchEngine:
         ):
             return static_eval
 
-        # Null Move Pruning (adaptive R based on depth)
+        # Null-move pruning with adaptive reduction.
         if (
             depth >= 3
             and not in_check
@@ -379,16 +376,16 @@ class SearchEngine:
             and big_piece_count >= 2
             and static_eval >= beta
         ):
-            # Adaptive reduction: R = 3 + depth // 6
+            # Adaptive R = 3 + depth/6, capped at depth-1.
             R = 3 + depth // 6
-            R = min(R, depth - 1)  # Don't reduce below depth 1
+            R = min(R, depth - 1)
             board.push(chess.Move.null())
             score = -self._negamax(board, depth - R, -beta, -beta + 1, ply + 1)
             board.pop()
             if score >= beta:
-                # Verification search at reduced depth for shallow depths
+                # Verification search at shallow depths.
                 if depth <= 6:
-                    # Use depth-R-1 to prevent null-move from re-triggering
+                    # Verify with reduced depth to avoid null-move re-trigger.
                     v_depth = max(1, depth - R - 1)
                     v_score = self._negamax(board, v_depth, alpha, beta, ply)
                     if v_score >= beta:
@@ -396,7 +393,7 @@ class SearchEngine:
                 else:
                     return beta
 
-        # Futility Pruning margins (depth-dependent)
+        # Futility pruning margins.
         futility_margin = [0, 200, 350, 500]
         can_futility_prune = (
             depth <= 3
@@ -417,7 +414,7 @@ class SearchEngine:
             # Lazy gives_check: only compute when actually needed (saves ~11% time)
             gives_check = None
 
-            # Futility Pruning: skip quiet moves that can't raise alpha
+            # Futility pruning: skip quiet moves unlikely to raise alpha.
             if (
                 can_futility_prune
                 and moves_searched > 0
@@ -438,7 +435,7 @@ class SearchEngine:
             needs_full_search = True
             is_killer = move == self.killers[ply][0] or move == self.killers[ply][1]
 
-            # Late Move Reductions (graduated table-based)
+            # Late move reductions (table-based).
             if (
                 depth >= 3
                 and moves_searched > 3
@@ -448,16 +445,16 @@ class SearchEngine:
                 and not in_check
             ):
                 if gives_check:
-                    pass  # Don't reduce checking moves
+                    pass  # Never reduce checking moves.
                 else:
                     # Use precomputed LMR table
                     r = LMR_TABLE[min(depth, MAX_LMR_DEPTH - 1)][
                         min(moves_searched, MAX_LMR_MOVES - 1)
                     ]
-                    # Reduce less in PV nodes
+                    # Reduce less in PV nodes.
                     if is_pv_node:
                         r = max(0, r - 1)
-                    # Reduce less for moves with good history
+                    # Reduce less for high-history moves.
                     hist_score = self.history[move.from_square][move.to_square]
                     if hist_score > 1000:
                         r = max(0, r - 1)
@@ -470,7 +467,7 @@ class SearchEngine:
                     )
                     needs_full_search = score > alpha
             elif not is_pv_node and moves_searched > 1:
-                # PVS: null-window search for non-PV moves
+                # PVS: null-window search for non-PV moves.
                 score = -self._negamax(board, depth - 1, -alpha - 1, -alpha, ply + 1)
                 needs_full_search = score > alpha
 
@@ -521,6 +518,7 @@ class SearchEngine:
     def _quiescence(
         self, board: chess.Board, alpha: int, beta: int, qs_depth: int = 0, ply: int = 0
     ) -> int:
+        """Quiescence search: resolve captures and checks before returning static eval."""
         self.nodes += 1
         if self._stop_event.is_set():
             return 0
@@ -543,26 +541,26 @@ class SearchEngine:
         in_check = board.is_check()
 
         if in_check:
-            # In check: must search all evasions, not just captures
+            # Must search all evasions when in check.
             stand_pat = -INF
             moves = list(board.legal_moves)
             if not moves:
-                return -MATE_SCORE + ply  # Checkmate: use real ply for mate distance
+                return -MATE_SCORE + ply
         else:
             stand_pat = self.evaluator.evaluate(board)
             if stand_pat >= beta:
                 return stand_pat
-            # Delta pruning: if static eval is way below alpha, prune
+            # Delta pruning.
             if stand_pat < alpha - 975:
                 return stand_pat
             if stand_pat > alpha:
                 alpha = stand_pat
 
-            # Generate captures + checking moves (first ply only for checks)
+            # Generate captures; include non-capture checks at first QS ply.
             captures = list(board.generate_legal_captures())
 
             if qs_depth == 0:
-                # Also search non-capture checks at first QS ply
+                # Include non-capture checking moves at first QS ply.
                 check_moves = []
                 for move in board.legal_moves:
                     if not board.is_capture(move) and board.gives_check(move):
@@ -584,7 +582,7 @@ class SearchEngine:
         best_move = None
 
         for move in moves:
-            # SEE pruning: skip clearly losing captures (not when in check)
+            # SEE pruning: skip clearly losing captures.
             if not in_check and board.is_capture(move):
                 if self._see(board, move) < -50:
                     continue
@@ -616,10 +614,7 @@ class SearchEngine:
         return best_score
 
     def _see(self, board: chess.Board, move: chess.Move) -> int:
-        """
-        Static Exchange Evaluation — estimates material outcome of a capture exchange.
-        Returns value in centipawns (positive = good for the attacker).
-        """
+        """Static Exchange Evaluation: estimate material gain/loss of a capture sequence."""
         to_sq = move.to_square
         from_sq = move.from_square
 
@@ -638,12 +633,11 @@ class SearchEngine:
 
         attacker_val = SEE_PIECE_VALUES[attacker.piece_type]
 
-        # Quick exit: capturing with equal or lesser value piece is always good
+        # Quick exit: capturing with equal or lesser value is always favorable.
         if attacker_val <= captured_val:
             return captured_val - attacker_val
 
-        # Capturing with a more valuable piece — check defenders/attackers
-        # Use iterative SEE with the gain array
+        # Iterative SEE with gain array.
         gain = [0] * 32
         gain[0] = captured_val
 
@@ -651,7 +645,7 @@ class SearchEngine:
         side = not attacker.color  # Opponent moves next
         d = 0
 
-        # Track which squares have been "used" (removed from exchange)
+        # Track consumed squares.
         used = chess.SquareSet()
         used.add(from_sq)
 
@@ -659,11 +653,11 @@ class SearchEngine:
             d += 1
             gain[d] = current_attacker_val - gain[d - 1]
 
-            # If the side to move can't improve by continuing, stop
+            # If continuing can't improve, stop.
             if max(-gain[d - 1], gain[d]) < 0:
                 break
 
-            # Find the least valuable attacker for 'side' on 'to_sq'
+            # Find least valuable attacker for the side to move.
             attackers = board.attackers(side, to_sq)
             best_atk_sq = None
             min_val = 20001
@@ -683,7 +677,7 @@ class SearchEngine:
             current_attacker_val = min_val
             side = not side
 
-        # Negamax the gain array to find optimal exchange result
+        # Negamax the gain array.
         while d > 0:
             gain[d - 1] = -max(-gain[d - 1], gain[d])
             d -= 1
@@ -691,6 +685,7 @@ class SearchEngine:
         return gain[0]
 
     def _order_moves(self, board: chess.Board, tt_move: Optional[chess.Move], ply: int):
+        """Sort legal moves: TT move > good captures > killers > history heuristic."""
         def score_move(move):
             if move == tt_move:
                 return 2000000
@@ -698,9 +693,9 @@ class SearchEngine:
                 # MVV-LVA for fast ordering; SEE sign for good/bad split
                 mvv_lva = self._mvv_lva(board, move)
                 if mvv_lva >= 0:
-                    return mvv_lva + 200000  # Good captures (LVA captures HVV)
+                    return mvv_lva + 200000  # Good captures.
                 else:
-                    return mvv_lva + 50000  # Likely bad captures, after killers
+                    return mvv_lva + 50000  # Likely losing captures.
             elif move == self.killers[ply][0]:
                 return 110000
             elif move == self.killers[ply][1]:
@@ -713,6 +708,7 @@ class SearchEngine:
         return moves
 
     def _mvv_lva(self, board, move):
+        """Most-Valuable-Victim / Least-Valuable-Attacker heuristic."""
         attacker = board.piece_at(move.from_square)
         if board.is_en_passant(move):
             victim_type = chess.PAWN

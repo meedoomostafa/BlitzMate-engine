@@ -1,4 +1,8 @@
+"""Shared utility helpers for the engine."""
+
+
 def print_info(d, score, nodes, elapsed, pv_moves, ponder, MATE_SCORE):
+    """Print a UCI-style info line for the current search depth."""
     pv_str = " ".join([m.uci() for m in pv_moves])
     nps = int(nodes / elapsed) if elapsed > 0 else 0
 
