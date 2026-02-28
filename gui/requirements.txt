@@ -1,2 +1,2 @@
 chess
-pygame
+PySide6>=6.5.0
