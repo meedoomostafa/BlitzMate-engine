@@ -103,9 +103,7 @@ class SearchEngine:
                 if root_wdl > 0:
                     is_valid_transition = outcome < 0
                 elif root_wdl < 0:
-                    is_valid_transition = (
-                        True  # Already losing; maximize DTZ to delay.
-                    )
+                    is_valid_transition = True  # Already losing; maximize DTZ to delay.
                 else:
                     is_valid_transition = outcome == 0
 
@@ -686,6 +684,7 @@ class SearchEngine:
 
     def _order_moves(self, board: chess.Board, tt_move: Optional[chess.Move], ply: int):
         """Sort legal moves: TT move > good captures > killers > history heuristic."""
+
         def score_move(move):
             if move == tt_move:
                 return 2000000
