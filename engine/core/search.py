@@ -37,6 +37,11 @@ class SearchEngine:
         self.max_depth = depth
         self.tt = TranspositionTable()
         self.history = defaultdict(lambda: defaultdict(int))
+        # Phase weights for dynamic depth calculation (mirrors evaluator).
+        self._phase_weights = {
+            chess.KNIGHT: 1, chess.BISHOP: 1,
+            chess.ROOK: 2, chess.QUEEN: 4,
+        }
 
         self.killers = defaultdict(lambda: [None, None])
 
@@ -62,6 +67,24 @@ class SearchEngine:
                 self.tablebase = chess.syzygy.open_tablebase(syzygy_path)
             except Exception:
                 pass
+
+    def _effective_depth(self, board: chess.Board) -> int:
+        """Compute effective search depth based on game phase.
+
+        In endgames the search tree is narrow (fewer legal moves), so we can
+        safely search deeper without blowing up node counts.  The bonus is
+        derived from the 0-24 phase value used in tapered evaluation:
+          - phase 24 (opening) → bonus 0
+          - phase  0 (bare kings) → bonus +6
+        Formula: bonus = max(0, (24 - phase) // 4)
+        """
+        phase = 0
+        for pt, w in self._phase_weights.items():
+            phase += len(board.pieces(pt, chess.WHITE)) * w
+            phase += len(board.pieces(pt, chess.BLACK)) * w
+        phase = min(phase, 24)
+        bonus = max(0, (24 - phase) // 4)
+        return self.max_depth + bonus
 
     def get_book_move(self, board: chess.Board) -> Optional[chess.Move]:
         """Probe opening books for a weighted random move. Returns None on miss."""
@@ -164,8 +187,9 @@ class SearchEngine:
         # Iterative deepening with aspiration windows.
         ASPIRATION_WINDOW = 50
         prev_score = 0
+        effective_depth = self._effective_depth(search_board)
 
-        for d in range(1, self.max_depth + 1):
+        for d in range(1, effective_depth + 1):
             if self._stop_event.is_set():
                 break
 
@@ -212,7 +236,7 @@ class SearchEngine:
         if self._thread and self._thread.is_alive():
             return
         self._stop_event.clear()
-        target_depth = depth or self.max_depth
+        target_depth = depth or self._effective_depth(board)
 
         def worker():
             book_move = self.get_book_move(board)
