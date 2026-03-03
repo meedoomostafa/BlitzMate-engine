@@ -63,7 +63,9 @@ class TranspositionTable:
             or existing.key != key
             or existing.age != self.generation
         ):
-            self.table[idx] = TTEntry(key, depth, value, flag, best_move, self.generation)
+            self.table[idx] = TTEntry(
+                key, depth, value, flag, best_move, self.generation
+            )
 
     def clear(self):
         """Flush all entries."""
