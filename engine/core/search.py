@@ -175,7 +175,8 @@ class SearchEngine:
         ponder_move = None
         best_score = 0
 
-        # Age history scores to prevent stale move ordering.
+        # Age TT entries and history scores between moves.
+        self.tt.new_search()
         for from_sq in self.history:
             for to_sq in self.history[from_sq]:
                 self.history[from_sq][to_sq] //= 2
@@ -255,6 +256,7 @@ class SearchEngine:
             best_move = None
             ponder_move = None
             self.nodes = 0
+            self.tt.new_search()
             start_time = time.time()
 
             for d in range(1, target_depth + 1):
