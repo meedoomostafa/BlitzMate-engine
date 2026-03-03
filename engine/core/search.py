@@ -324,8 +324,15 @@ class SearchEngine:
         self, board: chess.Board, depth: int, alpha: int, beta: int, ply: int
     ) -> int:
         self.nodes += 1
-        if board.is_repetition(2) or board.halfmove_clock >= 100:
+
+        # Threefold repetition → draw.
+        if board.is_repetition(3) or board.halfmove_clock >= 100:
             return 0
+
+        # Twofold repetition → mild contempt penalty to discourage looping.
+        if board.is_repetition(2):
+            return -25
+
         if self.nodes % 2048 == 0 and self._stop_event.is_set():
             return 0
 
