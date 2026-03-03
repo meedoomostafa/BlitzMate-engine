@@ -1,175 +1,275 @@
-# ♟️ BlitzMate Chess Engine
+# BlitzMate Chess Engine
 
-**Version 1.0 (Stable)**
+**A chess engine being rewritten in C++ for maximum performance, with Python bindings for the GUI and interface layers.**
 
-> **A strategic, Python-based chess engine featuring a custom Negamax search, Tapered Evaluation, and a modern GUI.**
+---
 
------
+## Current State (Python v1.0)
 
-## Project Overview
+BlitzMate is a working chess engine written in Python. It features:
 
-BlitzMate has evolved from a basic move calculator into a strategic engine. It moves beyond simple material counting to understand positional nuances like piece activity, king safety, and pawn structures.
+- Negamax search with alpha-beta pruning, PVS, LMR, null-move pruning
+- Iterative deepening with aspiration windows
+- Quiescence search with SEE pruning
+- Tapered evaluation (middlegame/endgame interpolation)
+- Bitboard-based pawn structure analysis
+- Piece-square tables for all pieces
+- Zobrist transposition table with depth-preferred replacement
+- Opening book support (Polyglot .bin)
+- Syzygy endgame tablebases (up to 5 pieces)
+- PySide6 GUI with drag-and-drop, eval bar, move history
+- UCI protocol support
+- FastAPI REST interface
 
-The project is structured into three independent modules:
+The Python engine searches at depth 5-6 in standard time controls. The C++ rewrite targets 10x+ speed improvement by eliminating interpreter overhead and using hardware-optimized bitboard operations.
 
-  * **Engine (The Brain):** Runs pure Python logic with Zobrist hashing and Alpha-Beta pruning.
-  * **GUI (The Hands):** A responsive Pygame interface with drag-and-drop and premove support.
-  * **Interface (The Voice):** Supports CLI and UCI protocols for testing.
+---
 
------
+## Architecture
 
-## ⚡ Key Features (v1.0)
+```
+chess_engine/
++-- engine_cpp/          # C++ engine (new, in development)
+|   +-- src/
+|   |   +-- eval.cpp
+|   |   +-- eval.h
+|   |   +-- search.cpp
+|   |   +-- search.h
+|   |   +-- tt.cpp
+|   |   +-- tt.h
+|   |   +-- bindings.cpp
+|   +-- tests/
+|   +-- CMakeLists.txt
+|   +-- chess.hpp         # chess-library (header-only)
+|
++-- engine_py/           # Python engine (current, reference implementation)
+|   +-- core/
+|   |   +-- search.py
+|   |   +-- bitboard_evaluator.py
+|   |   +-- transposition.py
+|   |   +-- board.py
+|   +-- config.py
+|   +-- assets/          # Opening books + Syzygy tablebases
+|
++-- interface/           # Protocol layer (Python, calls engine via bindings)
+|   +-- uci.py
+|   +-- api.py
+|   +-- cli.py
+|
++-- gui/                 # PySide6 desktop app (Python, calls engine via bindings)
+|   +-- main.py
+|   +-- helpers.py
+|   +-- widgets/
+|
++-- tests/
+    +-- test_engine.py
+    +-- test_integration.py
+```
 
-### 🧠 Intelligent Search
+**Layer rules:**
+- `engine_cpp/` and `engine_py/` have zero UI/IO dependencies.
+- `interface/` and `gui/` import from the engine only.
+- After the C++ rewrite, `interface/` and `gui/` will import from a Python binding module (`blitzmate`) instead of `engine_py.core`.
 
-The core decision-making process uses advanced algorithms to calculate the best move efficiently.
+**Migration strategy:**
+- The current `engine/` directory will be renamed to `engine_py/` (reference implementation).
+- The new C++ engine will live in `engine_cpp/`.
+- Both will coexist during development. Once the C++ engine reaches parity, `engine_py/` becomes archive/reference only.
 
-  * **Negamax with Alpha-Beta Pruning:** Efficiently prunes the search tree to ignore bad variations.
-  * **Principal Variation Search (PVS):** Optimizes search by assuming the first move is best, checking others with a zero window.
-  * **Late Move Reduction (LMR):** Search less promising moves at reduced depth to save time.
-  * **Null Move Pruning (NMP):** Massively increases search depth by pruning branches where passing the turn is still winning.
-  * **Quiescence Search:** Solves the "Horizon Effect" by searching violent moves (captures) beyond the target depth.
-  * **Iterative Deepening:** Ensures the engine always has a "best move" ready, even if time runs out.
+---
 
-### 🛡️ Strategic Evaluation
+## C++ Migration Plan
 
-  * **Tapered Evaluation:** Interpolates between Middlegame and Endgame scores (e.g., King hides in middlegame, attacks in endgame).
-  * **Piece-Square Tables (PST):** Complete tables for all pieces. The engine knows to centralize Knights/Bishops and put Rooks on open files.
-  * **Threat Detection:** Static analysis prevents tactical blunders (like hanging pieces or moving a Queen to a square attacked by a Pawn).
-  * **Bitboard Optimization:** Uses fast bitwise operations for analyzing Pawn Structures (Passers/Isolations).
+### Prerequisites to Study
 
-### 🖥️ Modern GUI
+Before starting the rewrite, study these topics in order:
 
-  * **Drag & Drop:** Smooth piece movement mechanics.
-  * **Pondering Arrow:** Visualizes what the engine thinks *you* will play next.
-  * **Visual Promotion:** Context menu for selecting Queen, Rook, Bishop, or Knight.
-  * **Premove Support:** Allows players to input moves during the engine's turn.
+**1. C++ Fundamentals**
+- Modern C++ (C++17 minimum, C++20 preferred)
+- RAII, smart pointers, move semantics
+- Templates and constexpr
+- STL containers and algorithms
 
------
+**2. Build Systems**
+- CMake (the standard for C++ projects)
+- Compiler flags for optimization (-O3, -march=native, -flto)
+- Static analysis tools (clang-tidy, cppcheck)
 
-## 🏗️ Architecture
+**3. Chess Programming**
+- Bitboard representation (64-bit integers, one per piece type per color)
+- Tapered evaluation (middlegame/endgame interpolation)
+- Alpha-beta search with pruning techniques
+- Reference: [Chess Programming Wiki](https://www.chessprogramming.org)
 
-### Engine Module (`engine/core/`)
+**4. Python Bindings**
+- pybind11 (mature, widely used) or nanobind (lighter, faster compile)
+- Exposing C++ classes and functions to Python
+- GIL management for background search threads
+- Building wheels with scikit-build-core
 
-| File | Role | Description |
-| :--- | :--- | :--- |
-| **`search.py`** | The "Eyes" | Implements Negamax, NMP, and Move Ordering (MVV-LVA). |
-| **`bitboard_evaluator.py`** | The "Brain" | Handles material counting, PST lookup, and bitwise structure assessment. |
-| **`loopboard_evaluator.py`** | The "Brain" | Handles material counting, PST lookup, with looping approach. |
-| **`transposition.py`** | The "Memory"| Uses Zobrist Hashing (Polyglot) for $O(1)$ state lookups. |
-| **`config.py`** | Settings | Centralized configuration for search depth, hash size, and weights. |
+**5. Testing**
+- Google Test or Catch2 for C++ unit tests
+- Perft testing for move generation correctness
+- EPD test suites for search/eval validation
 
------
+**6. NNUE (for Phase 6)**
+- [NNUE Probe](https://github.com/dshawul/nnue-probe) -- reference implementation
+- [Stockfish NNUE docs](https://github.com/official-stockfish/nnue-pytorch/blob/master/docs/nnue.md) -- training pipeline
+- [nnue-pytorch](https://github.com/official-stockfish/nnue-pytorch) -- PyTorch trainer for Stockfish-compatible nets
+- [A Guide to NNUE](https://www.chessprogramming.org/NNUE) -- Chess Programming Wiki overview
+- [Bullet trainer](https://github.com/jw1912/bullet) -- fast NNUE trainer in Rust
+- Training data: generate self-play games with the HCE engine, label with search scores, train HalfKAv2 architecture
+
+### Board Representation
+
+Using [chess-library](https://github.com/Disservin/chess-library) by Disservin:
+
+- Header-only, single `#include "chess.hpp"`
+- Full bitboard representation internally
+- ~220-355M NPS in perft (Ryzen 9 5950X)
+- Used by Stockfish WDL tooling, Rice engine (~3.3k Elo), fast-chess
+- Provides `makeMove()` / `unmakeMove()` with incremental Zobrist hashing
+- Supports Chess960, null moves, repetition detection, castling rights
+
+This eliminates the need to implement board representation, move generation, and FEN parsing from scratch. The engine development focuses on evaluation, search, and Python bindings.
+
+---
+
+### Phase 1 -- Project Setup and Board Integration
+
+**Goal**: CMake project compiling with chess-library, basic perft validation.
+
+- [ ] Create `engine_cpp/` directory with CMake project structure
+- [ ] Integrate chess-library (`chess.hpp`) as a dependency
+- [ ] Write a perft test validating move generation against known positions
+- [ ] Set up Google Test / Catch2 test framework
+- [ ] Configure CI build (CMake + tests)
+- [ ] Add compiler flags (-O3, -march=native, -flto for release)
+- [ ] Verify FEN import/export through chess-library API
+
+### Phase 2 -- Evaluation
+
+**Goal**: Port the Python evaluator to C++ with direct bitboard access.
+
+- [ ] Implement tapered evaluation framework (phase 0-24, MG/EG interpolation)
+- [ ] Port piece-square tables (all pieces, MG and EG)
+- [ ] Implement incremental material + PST scoring on make/unmake
+- [ ] Port pawn structure evaluation (doubled, isolated, passed pawns via bitboards)
+- [ ] Port king safety evaluation (shield, pawn storm, zone attackers, open files)
+- [ ] Port mobility evaluation (safe squares per piece, exclude enemy pawn attacks)
+- [ ] Port passed pawn bonuses (rank-based, rook behind passer, connected passers)
+- [ ] Port threat evaluation (pawn attacks on pieces, hanging pieces)
+- [ ] Port king-pawn proximity evaluation for endgames
+- [ ] Add EPD test suite comparing C++ eval output against Python evaluator
+- [ ] Use `std::popcount` / `std::countr_zero` from C++20 `<bit>` header
+
+### Phase 3 -- Search
+
+**Goal**: Port the search with all pruning techniques, single-threaded.
+
+- [ ] Implement transposition table (Zobrist verification, depth-preferred + age replacement)
+- [ ] Implement negamax with alpha-beta pruning
+- [ ] Implement iterative deepening with aspiration windows
+- [ ] Implement move ordering (TT move, MVV-LVA captures, killer heuristic, history heuristic)
+- [ ] Implement null-move pruning (with endgame guard)
+- [ ] Implement late move reductions (table-based R values)
+- [ ] Implement futility pruning (reverse futility + standard, with endgame guard)
+- [ ] Implement check extensions (+1 depth)
+- [ ] Implement quiescence search (captures, check evasions, SEE pruning, delta pruning)
+- [ ] Implement time management (allocate time from clock + increment)
+- [ ] Implement repetition detection with contempt
+- [ ] Add Polyglot opening book probing
+- [ ] Add EPD tactical test suite (WAC, STS)
+- [ ] Differential testing: compare bestmove at fixed depth against Python engine
+
+### Phase 4 -- Python Bindings
+
+**Goal**: Expose the C++ engine to Python so the GUI and interface layers work unchanged.
+
+- [ ] Set up pybind11 / nanobind binding module
+- [ ] Expose `Engine` class with `search()` and `evaluate()` methods
+- [ ] Implement GIL release during search (so GUI stays responsive)
+- [ ] Convert final bestmove from C++ move format to python-chess `Move` object
+- [ ] Bridge config.toml parameters from Python to C++ engine
+- [ ] Create `blitzmate` Python package (importable as `import blitzmate`)
+- [ ] Update `gui/` imports from `engine_py.core` to `blitzmate`
+- [ ] Update `interface/` imports from `engine_py.core` to `blitzmate`
+- [ ] Package with scikit-build-core for wheel distribution
+- [ ] Verify all existing Python tests pass with C++ backend
+
+### Phase 5 -- Integration and Testing
+
+**Goal**: Full test coverage, GUI and interface work identically to Python version.
+
+- [ ] Run full pytest suite (`test_engine.py` + `test_integration.py`) with C++ backend
+- [ ] UCI compliance test with CuteChess or Arena
+- [ ] GUI smoke test (play a full game through the PySide6 interface)
+- [ ] Benchmark NPS: compare C++ vs Python engine on same positions
+- [ ] ELO estimation: run gauntlet against known engines via cutechess-cli
+- [ ] Add Syzygy tablebase probing via Fathom library
+- [ ] Set up cibuildwheel for Linux/macOS/Windows wheel builds
+- [ ] Add ASan/UBSan/TSan in debug CI configuration
+
+### Phase 6 -- Advanced (Post-MVP)
+
+**Goal**: Push engine strength beyond HCE limits.
+
+- [ ] Train NNUE evaluation (HalfKAv2 architecture)
+- [ ] Generate training data via self-play with HCE engine
+- [ ] Integrate nnue-pytorch or Bullet trainer
+- [ ] Implement Lazy SMP (shared TT, independent search threads)
+- [ ] Add lock-free TT for multi-threaded search
+- [ ] Explore AVX2/BMI2 SIMD optimizations where beneficial
+- [ ] SPSA or Texel tuning for eval weights
+- [ ] Consider own opening book format or enhanced Polyglot support
+
+---
 
 ## Installation
 
-### Prerequisites
-
-  * Python 3.13 or higher
-  * pip package manager
-
-### Setup Guide
-
 ```bash
-# 1. Clone the repository
 git clone https://github.com/meedoomostafa/BlitzMate-engine.git
 cd BlitzMate-engine
 
-# 2. Create virtual environment
 python3.13 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate
 
 pip install --upgrade pip
-
-# 3. Install all dependencies
 pip install -r requirements.txt
 
-# 4. Download game assets (interactive wizard)
+# Optional: download opening books and tablebases
 python setup_assets.py
 ```
 
-### Asset Setup Options
-
-The interactive wizard lets you choose exactly what to download:
-
-| Command | Behaviour |
-| :--- | :--- |
-| `python setup_assets.py` | Interactive menu – pick books individually or download everything |
-| `python setup_assets.py books` | Download **all** opening books (~28 MB) |
-| `python setup_assets.py syzygy` | Download Syzygy endgame tablebases (~215 MB) |
-| `python setup_assets.py all` | Download books **and** Syzygy (non-interactive) |
-
-> **Note:** The engine works without any external assets — it falls back to its
-> built-in search. However, downloading the opening books is **recommended** for
-> stronger and faster opening play. Syzygy tablebases provide perfect endgame
-> play with ≤ 5 pieces on the board.
-
------
-
-## 🎮 Usage
-
-### Running the GUI (Recommended)
-
-This launches the graphical board with **Depth 5** search enabled by default.
+## Usage
 
 ```bash
-# from the root folder (BlitzMate-engine)
+# GUI
 python -m gui.main
+
+# CLI
+python -m interface.cli
+
+# UCI
+python -m interface.uci
 ```
 
-### Running the CLI
-
-For testing or debugging without graphics:
+## Testing
 
 ```bash
-# from the root folder (BlitzMate-engine) 
-# interface still not implemented
-python -m interface.cli
+pytest tests/ -v
 ```
 
------
+## Contributing
 
-## 🧠 Current Performance
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and guidelines.
 
-  * **Search Depth:** Comfortably runs at Depth 5-6 in standard time controls.
-  * **Nodes Per Second:** Optimized via Zobrist Hashing (Integers) vs old FEN strings.
-  * **Style:** Positional/Tactical. Prioritizes development and safety; avoids "weird" shuffling.
+Check the [Issues](https://github.com/meedoomostafa/BlitzMate-engine/issues) page for tasks available for contribution. Each issue is self-contained with full context and acceptance criteria.
 
------
+## License
 
-## 📋 To-Do Roadmap (v2.0)
+See [LICENSE](LICENSE) for details.
 
-**GUI & Architecture**
+---
 
-  * [x] **Non-Blocking Architecture:** Migrate the engine to a background thread so the window stays responsive during calculations.
-
-**Optimization & Speed**
-
-  * [x] **Bitboard Evaluation:** Migrate `evaluator.py` to use bitwise operations for pawn structures (Passers/Isolations).
-  * [ ] **Multiprocessing:** Implement Lazy SMP to utilize multiple CPU cores (bypassing Python GIL).
-
-**Knowledge**
-
-  - [x] **Opening Book:** Integrate `chess.polyglot` to play standard openings (Sicilian, Queen's Gambit, etc.) instantly.
-  * [x] **Endgame Tablebases:** Integrate Syzygy tablebases for perfect endgame play.
-
-**Search Refinements**
-
-  * [x] **Killer Heuristic:** Prioritize moves that caused cutoffs in sibling nodes.
-  * [x] **Late Move Reduction (LMR):** Search less promising moves at reduced depth.
-
------
-
-## 🤝 Contributing
-
-Contributions are welcome\! Feel free to:
-
-1.  Report bugs (especially evaluation blind spots).
-2.  Submit pull requests for optimization.
-
-## 📄 License
-
-This project is open source. Please check the repository for license details.
-
-**👨‍💻 Author**
-Created by **meedoomostafa**
+**Author**: meedoomostafa
