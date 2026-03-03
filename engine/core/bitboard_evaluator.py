@@ -199,10 +199,10 @@ class BitboardEvaluator:
             mg_score -= self.cfg.BISHOP_PAIR_BONUS
             eg_score -= self.cfg.BISHOP_PAIR_BONUS
 
-        # 4.2 Mobility.
-        mob_score = self._eval_mobility(board, white_pawns, black_pawns)
-        mg_score += mob_score
-        eg_score += mob_score
+        # 4.2 Mobility (tapered: rook mobility valued higher in endgame).
+        mg_mob, eg_mob = self._eval_mobility(board, white_pawns, black_pawns)
+        mg_score += mg_mob
+        eg_score += eg_mob
 
         # 4.3 King safety (critical in middlegame, diminishes in endgame).
         ks_score = self._eval_king_safety(board, white_pawns, black_pawns)
@@ -333,14 +333,25 @@ class BitboardEvaluator:
 
     def _eval_mobility(
         self, board: chess.Board, white_pawns: int = 0, black_pawns: int = 0
-    ) -> int:
-        """Safe mobility score: attack squares minus enemy pawn-controlled squares."""
-        score = 0
-        MOBILITY_WEIGHTS = {
+    ) -> tuple:
+        """Safe mobility score: attack squares minus enemy pawn-controlled squares.
+
+        Returns (mg_mobility, eg_mobility) tuple with tapered weights.
+        In endgames, rook mobility is much more valuable.
+        """
+        mg_score = 0
+        eg_score = 0
+        MG_MOBILITY_WEIGHTS = {
             chess.KNIGHT: 8,
             chess.BISHOP: 8,
             chess.ROOK: 5,
             chess.QUEEN: 3,
+        }
+        EG_MOBILITY_WEIGHTS = {
+            chess.KNIGHT: 6,
+            chess.BISHOP: 7,
+            chess.ROOK: 10,
+            chess.QUEEN: 5,
         }
 
         white_pawns_mask = white_pawns or board.pieces_mask(chess.PAWN, chess.WHITE)
@@ -361,15 +372,17 @@ class BitboardEvaluator:
                 # Exclude squares controlled by enemy pawns.
                 safe_squares = attacks & ~b_pawn_attacks
                 mob = chess.popcount(safe_squares)
-                score += mob * MOBILITY_WEIGHTS[pt]
+                mg_score += mob * MG_MOBILITY_WEIGHTS[pt]
+                eg_score += mob * EG_MOBILITY_WEIGHTS[pt]
 
             for sq in board.pieces(pt, chess.BLACK):
                 attacks = board.attacks_mask(sq)
                 safe_squares = attacks & ~w_pawn_attacks
                 mob = chess.popcount(safe_squares)
-                score -= mob * MOBILITY_WEIGHTS[pt]
+                mg_score -= mob * MG_MOBILITY_WEIGHTS[pt]
+                eg_score -= mob * EG_MOBILITY_WEIGHTS[pt]
 
-        return score
+        return mg_score, eg_score
 
     def _eval_king_safety(
         self,
