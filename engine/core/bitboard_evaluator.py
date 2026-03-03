@@ -243,6 +243,12 @@ class BitboardEvaluator:
         kp_score = self._eval_king_pawn_proximity_eg(board, white_pawns, black_pawns)
         eg_score += kp_score
 
+        # 4.11 Rook behind passed pawn and connected passed pawns (endgame).
+        adv_passer_score = self._eval_advanced_passer_bonuses(
+            board, white_pawns, black_pawns
+        )
+        eg_score += adv_passer_score
+
         # Tapered eval: blend MG/EG scores by remaining material.
         phase = min(phase, 24)
         final_score = (mg_score * phase + eg_score * (24 - phase)) // 24
@@ -328,6 +334,62 @@ class BitboardEvaluator:
                 # Opponent king distance bonus (far = good for black).
                 opp_dist = max(abs(w_king_file - f), abs(w_king_rank - r))
                 score -= (opp_dist - 1) * 10
+
+        return score
+
+    def _eval_advanced_passer_bonuses(
+        self, board: chess.Board, white_pawns: int, black_pawns: int
+    ) -> int:
+        """Endgame bonuses: rook behind passed pawn and connected passed pawns."""
+        ROOK_BEHIND_PASSER_BONUS = 50
+        CONNECTED_PASSER_BONUS = 40
+        score = 0
+
+        # --- White ---
+        w_rooks = board.pieces_mask(chess.ROOK, chess.WHITE)
+        for sq in chess.SquareSet(white_pawns):
+            f, r = chess.square_file(sq), chess.square_rank(sq)
+            passed_mask = self.white_passed_masks[sq]
+            if (passed_mask & black_pawns) != 0:
+                continue  # Not a passed pawn.
+            # Rook behind passed pawn: any white rook on same file behind (lower rank).
+            file_mask = FILES[f]
+            rooks_on_file = w_rooks & file_mask
+            for rsq in chess.SquareSet(rooks_on_file):
+                if chess.square_rank(rsq) < r:
+                    score += ROOK_BEHIND_PASSER_BONUS
+                    break
+            # Connected passers: adjacent file also has a passed pawn.
+            for adj_f in [f - 1, f + 1]:
+                if 0 <= adj_f <= 7:
+                    adj_file_pawns = white_pawns & FILES[adj_f]
+                    for adj_sq in chess.SquareSet(adj_file_pawns):
+                        adj_passed = self.white_passed_masks[adj_sq]
+                        if (adj_passed & black_pawns) == 0:
+                            score += CONNECTED_PASSER_BONUS
+                            break
+
+        # --- Black ---
+        b_rooks = board.pieces_mask(chess.ROOK, chess.BLACK)
+        for sq in chess.SquareSet(black_pawns):
+            f, r = chess.square_file(sq), chess.square_rank(sq)
+            passed_mask = self.black_passed_masks[sq]
+            if (passed_mask & white_pawns) != 0:
+                continue
+            file_mask = FILES[f]
+            rooks_on_file = b_rooks & file_mask
+            for rsq in chess.SquareSet(rooks_on_file):
+                if chess.square_rank(rsq) > r:
+                    score -= ROOK_BEHIND_PASSER_BONUS
+                    break
+            for adj_f in [f - 1, f + 1]:
+                if 0 <= adj_f <= 7:
+                    adj_file_pawns = black_pawns & FILES[adj_f]
+                    for adj_sq in chess.SquareSet(adj_file_pawns):
+                        adj_passed = self.black_passed_masks[adj_sq]
+                        if (adj_passed & white_pawns) == 0:
+                            score -= CONNECTED_PASSER_BONUS
+                            break
 
         return score
 
