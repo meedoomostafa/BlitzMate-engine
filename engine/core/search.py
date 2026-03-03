@@ -329,9 +329,10 @@ class SearchEngine:
         if board.is_repetition(3) or board.halfmove_clock >= 100:
             return 0
 
-        # Twofold repetition → mild contempt penalty to discourage looping.
-        if board.is_repetition(2):
-            return -25
+        # Twofold repetition → contempt penalty (only at non-root plies).
+        # Small penalty to discourage non-progress loops.
+        if ply > 0 and board.is_repetition(2):
+            return -15
 
         if self.nodes % 2048 == 0 and self._stop_event.is_set():
             return 0
@@ -388,13 +389,9 @@ class SearchEngine:
         )
 
         # Compute game phase for endgame-aware pruning decisions.
-        game_phase = 0
-        for pt, w in self._phase_weights.items():
-            game_phase += len(board.pieces(pt, chess.WHITE)) * w
-            game_phase += len(board.pieces(pt, chess.BLACK)) * w
-        game_phase = min(game_phase, 24)
-
+        # Reuses phase cached by evaluator to avoid redundant piece counting.
         static_eval = self.evaluator.evaluate(board)
+        game_phase = self.evaluator.last_phase
 
         # Reverse futility pruning (disabled in endgames where eval is unreliable).
         if (

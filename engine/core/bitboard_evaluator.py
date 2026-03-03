@@ -43,6 +43,7 @@ class BitboardEvaluator:
         Initializes the evaluator and pre-calculates expensive bitmasks.
         """
         self.cfg = CONFIG.eval
+        self.last_phase = 24  # Cached phase from most recent evaluate() call.
 
         # Phase weights for game phase calculation (class-level to avoid re-creation)
         self.phase_weights = {
@@ -251,6 +252,7 @@ class BitboardEvaluator:
 
         # Tapered eval: blend MG/EG scores by remaining material.
         phase = min(phase, 24)
+        self.last_phase = phase  # Cache for external use (e.g., search pruning).
         final_score = (mg_score * phase + eg_score * (24 - phase)) // 24
 
         # Return relative to side to move (negamax convention).
@@ -342,7 +344,7 @@ class BitboardEvaluator:
     ) -> int:
         """Endgame bonuses: rook behind passed pawn and connected passed pawns."""
         ROOK_BEHIND_PASSER_BONUS = 50
-        CONNECTED_PASSER_BONUS = 40
+        CONNECTED_PASSER_BONUS = 20  # Halved: each pair counted from both sides.
         score = 0
 
         # --- White ---
@@ -359,13 +361,13 @@ class BitboardEvaluator:
                 if chess.square_rank(rsq) < r:
                     score += ROOK_BEHIND_PASSER_BONUS
                     break
-            # Connected passers: adjacent file also has a passed pawn.
+            # Connected passers: adjacent file has a passed pawn within 1 rank.
             for adj_f in [f - 1, f + 1]:
                 if 0 <= adj_f <= 7:
                     adj_file_pawns = white_pawns & FILES[adj_f]
                     for adj_sq in chess.SquareSet(adj_file_pawns):
                         adj_passed = self.white_passed_masks[adj_sq]
-                        if (adj_passed & black_pawns) == 0:
+                        if (adj_passed & black_pawns) == 0 and abs(chess.square_rank(adj_sq) - r) <= 1:
                             score += CONNECTED_PASSER_BONUS
                             break
 
@@ -387,7 +389,7 @@ class BitboardEvaluator:
                     adj_file_pawns = black_pawns & FILES[adj_f]
                     for adj_sq in chess.SquareSet(adj_file_pawns):
                         adj_passed = self.black_passed_masks[adj_sq]
-                        if (adj_passed & white_pawns) == 0:
+                        if (adj_passed & white_pawns) == 0 and abs(chess.square_rank(adj_sq) - r) <= 1:
                             score -= CONNECTED_PASSER_BONUS
                             break
 
