@@ -893,7 +893,7 @@ class EvalConfig:
     ROOK_OPEN_FILE_BONUS: int = 25
     ROOK_SEMI_OPEN_FILE_BONUS: int = 15
     PASSED_PAWN_BONUS: List[int] = field(
-        default_factory=lambda: [0, 10, 20, 30, 50, 80, 120, 0]
+        default_factory=lambda: [0, 10, 20, 40, 80, 150, 250, 0]
     )
     ISOLATED_PAWN_PENALTY: int = -20
     DOUBLED_PAWN_PENALTY: int = -20
