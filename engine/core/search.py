@@ -39,8 +39,10 @@ class SearchEngine:
         self.history = defaultdict(lambda: defaultdict(int))
         # Phase weights for dynamic depth calculation (mirrors evaluator).
         self._phase_weights = {
-            chess.KNIGHT: 1, chess.BISHOP: 1,
-            chess.ROOK: 2, chess.QUEEN: 4,
+            chess.KNIGHT: 1,
+            chess.BISHOP: 1,
+            chess.ROOK: 2,
+            chess.QUEEN: 4,
         }
 
         self.killers = defaultdict(lambda: [None, None])

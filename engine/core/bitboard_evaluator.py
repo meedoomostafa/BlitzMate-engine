@@ -310,8 +310,12 @@ class BitboardEvaluator:
         if w_king_sq is None or b_king_sq is None:
             return 0
 
-        w_king_file, w_king_rank = chess.square_file(w_king_sq), chess.square_rank(w_king_sq)
-        b_king_file, b_king_rank = chess.square_file(b_king_sq), chess.square_rank(b_king_sq)
+        w_king_file, w_king_rank = chess.square_file(w_king_sq), chess.square_rank(
+            w_king_sq
+        )
+        b_king_file, b_king_rank = chess.square_file(b_king_sq), chess.square_rank(
+            b_king_sq
+        )
 
         # White passed pawns.
         for sq in chess.SquareSet(white_pawns):
@@ -367,7 +371,9 @@ class BitboardEvaluator:
                     adj_file_pawns = white_pawns & FILES[adj_f]
                     for adj_sq in chess.SquareSet(adj_file_pawns):
                         adj_passed = self.white_passed_masks[adj_sq]
-                        if (adj_passed & black_pawns) == 0 and abs(chess.square_rank(adj_sq) - r) <= 1:
+                        if (adj_passed & black_pawns) == 0 and abs(
+                            chess.square_rank(adj_sq) - r
+                        ) <= 1:
                             score += CONNECTED_PASSER_BONUS
                             break
 
@@ -389,7 +395,9 @@ class BitboardEvaluator:
                     adj_file_pawns = black_pawns & FILES[adj_f]
                     for adj_sq in chess.SquareSet(adj_file_pawns):
                         adj_passed = self.black_passed_masks[adj_sq]
-                        if (adj_passed & white_pawns) == 0 and abs(chess.square_rank(adj_sq) - r) <= 1:
+                        if (adj_passed & white_pawns) == 0 and abs(
+                            chess.square_rank(adj_sq) - r
+                        ) <= 1:
                             score -= CONNECTED_PASSER_BONUS
                             break
 
