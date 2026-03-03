@@ -387,11 +387,12 @@ class SearchEngine:
 
         static_eval = self.evaluator.evaluate(board)
 
-        # Reverse futility pruning.
+        # Reverse futility pruning (disabled in endgames where eval is unreliable).
         if (
             depth <= 3
             and not in_check
             and not is_pv_node
+            and game_phase > 8
             and abs(alpha) < MATE_SCORE - 100
             and static_eval - 120 * depth >= beta
         ):
@@ -424,12 +425,13 @@ class SearchEngine:
                 else:
                     return beta
 
-        # Futility pruning margins.
+        # Futility pruning margins (disabled in endgames where slow improvements matter).
         futility_margin = [0, 200, 350, 500]
         can_futility_prune = (
             depth <= 3
             and not in_check
             and not is_pv_node
+            and game_phase > 8
             and abs(alpha) < MATE_SCORE - 100
             and static_eval + futility_margin[depth] <= alpha
         )
