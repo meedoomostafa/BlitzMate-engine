@@ -204,10 +204,11 @@ class BitboardEvaluator:
         mg_score += mob_score
         eg_score += mob_score
 
-        # 4.3 King safety (critical in middlegame).
+        # 4.3 King safety (critical in middlegame, diminishes in endgame).
         ks_score = self._eval_king_safety(board, white_pawns, black_pawns)
         mg_score += ks_score
-        eg_score += int(ks_score * 0.15)
+        # Scale king safety into EG by phase: full middle-game → 15%, pure endgame → 0%.
+        eg_score += int(ks_score * 0.15 * phase / 24)
 
         # 4.4 Threat detection.
         threat_score = self._eval_threats(board)
