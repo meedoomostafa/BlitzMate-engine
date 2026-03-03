@@ -239,6 +239,10 @@ class BitboardEvaluator:
         queen_score = self._eval_queen_activity(board, phase)
         mg_score += queen_score
 
+        # 4.10 King-pawn proximity (endgame only — king support for passed pawns).
+        kp_score = self._eval_king_pawn_proximity_eg(board, white_pawns, black_pawns)
+        eg_score += kp_score
+
         # Tapered eval: blend MG/EG scores by remaining material.
         phase = min(phase, 24)
         final_score = (mg_score * phase + eg_score * (24 - phase)) // 24
@@ -277,6 +281,53 @@ class BitboardEvaluator:
                 rel_rank = rank if color == chess.WHITE else 7 - rank
                 if 0 <= rel_rank < 8:
                     score += self.cfg.PASSED_PAWN_BONUS[rel_rank]
+
+        return score
+
+    def _eval_king_pawn_proximity_eg(
+        self, board: chess.Board, white_pawns: int, black_pawns: int
+    ) -> int:
+        """Endgame king-pawn proximity: reward king supporting own passed pawns
+        and approaching enemy passed pawns to block them.
+
+        Uses Chebyshev distance (king moves diagonally).
+        Bonuses:
+          - Friendly king close to own passed pawn:  +(7 - dist) * 15
+          - Opponent king far from our passed pawn:  +(dist - 1) * 10
+        """
+        score = 0
+
+        w_king_sq = board.king(chess.WHITE)
+        b_king_sq = board.king(chess.BLACK)
+        if w_king_sq is None or b_king_sq is None:
+            return 0
+
+        w_king_file, w_king_rank = chess.square_file(w_king_sq), chess.square_rank(w_king_sq)
+        b_king_file, b_king_rank = chess.square_file(b_king_sq), chess.square_rank(b_king_sq)
+
+        # White passed pawns.
+        for sq in chess.SquareSet(white_pawns):
+            f, r = chess.square_file(sq), chess.square_rank(sq)
+            passed_mask = self.white_passed_masks[sq]
+            if (passed_mask & black_pawns) == 0:
+                # Friendly king proximity bonus.
+                dist = max(abs(w_king_file - f), abs(w_king_rank - r))
+                score += (7 - dist) * 15
+                # Opponent king distance bonus (far = good for us).
+                opp_dist = max(abs(b_king_file - f), abs(b_king_rank - r))
+                score += (opp_dist - 1) * 10
+
+        # Black passed pawns.
+        for sq in chess.SquareSet(black_pawns):
+            f, r = chess.square_file(sq), chess.square_rank(sq)
+            passed_mask = self.black_passed_masks[sq]
+            if (passed_mask & white_pawns) == 0:
+                # Friendly king proximity bonus.
+                dist = max(abs(b_king_file - f), abs(b_king_rank - r))
+                score -= (7 - dist) * 15
+                # Opponent king distance bonus (far = good for black).
+                opp_dist = max(abs(w_king_file - f), abs(w_king_rank - r))
+                score -= (opp_dist - 1) * 10
 
         return score
 
