@@ -378,6 +378,13 @@ class SearchEngine:
             for pt in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]
         )
 
+        # Compute game phase for endgame-aware pruning decisions.
+        game_phase = 0
+        for pt, w in self._phase_weights.items():
+            game_phase += len(board.pieces(pt, chess.WHITE)) * w
+            game_phase += len(board.pieces(pt, chess.BLACK)) * w
+        game_phase = min(game_phase, 24)
+
         static_eval = self.evaluator.evaluate(board)
 
         # Reverse futility pruning.
@@ -391,11 +398,13 @@ class SearchEngine:
             return static_eval
 
         # Null-move pruning with adaptive reduction.
+        # Disabled in deep endgames (phase <= 6) where zugzwang is common.
         if (
             depth >= 3
             and not in_check
             and ply > 0
             and big_piece_count >= 2
+            and game_phase > 6
             and static_eval >= beta
         ):
             # Adaptive R = 3 + depth/6, capped at depth-1.
