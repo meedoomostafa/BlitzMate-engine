@@ -72,6 +72,16 @@ class BitboardEvaluator:
         self.king_shield_masks: List[int] = [0] * 64
         self._init_king_masks()
 
+        # King centralization table for endgame (Chebyshev distance from center).
+        # Higher bonus for squares closer to the center (e4/d4/e5/d5).
+        self._king_center_bonus: List[int] = [0] * 64
+        for sq in range(64):
+            f, r = chess.square_file(sq), chess.square_rank(sq)
+            # Distance from center (3.5, 3.5).
+            center_dist = max(abs(f - 3.5), abs(r - 3.5))
+            # Bonus: 0 at corner (dist ~3.5), up to ~20 at center (dist ~0.5).
+            self._king_center_bonus[sq] = int((4 - center_dist) * 6)
+
     def _init_passed_masks(self) -> None:
         """Build front-span bitmasks for passed pawn detection."""
         for sq in range(64):
@@ -252,6 +262,13 @@ class BitboardEvaluator:
         )
         eg_score += adv_passer_score
 
+        # 4.12 King centralization bonus (endgame: king should move to center).
+        w_king_sq = board.king(chess.WHITE)
+        b_king_sq = board.king(chess.BLACK)
+        if w_king_sq is not None and b_king_sq is not None:
+            eg_score += self._king_center_bonus[w_king_sq]
+            eg_score -= self._king_center_bonus[b_king_sq]
+
         # Tapered eval: blend MG/EG scores by remaining material.
         phase = min(phase, 24)
         self.last_phase = phase  # Cache for external use (e.g., search pruning).
@@ -400,6 +417,9 @@ class BitboardEvaluator:
         """Endgame bonuses: rook behind passed pawn and connected passed pawns."""
         ROOK_BEHIND_PASSER_BONUS = 50
         CONNECTED_PASSER_BONUS = 20  # Halved: each pair counted from both sides.
+        # Extra EG bonus for advanced passers (by relative rank).
+        # rank 0-4: 0, rank 5: 30, rank 6: 80 (on top of existing PASSED_PAWN_BONUS).
+        ADVANCED_PASSER_EG_BONUS = [0, 0, 0, 0, 0, 30, 80, 0]
         score = 0
 
         # --- White ---
@@ -409,6 +429,9 @@ class BitboardEvaluator:
             passed_mask = self.white_passed_masks[sq]
             if (passed_mask & black_pawns) != 0:
                 continue  # Not a passed pawn.
+            # Extra bonus for advanced passers.
+            if 0 <= r < 8:
+                score += ADVANCED_PASSER_EG_BONUS[r]
             # Rook behind passed pawn: any white rook on same file behind (lower rank).
             file_mask = FILES[f]
             rooks_on_file = w_rooks & file_mask
@@ -435,6 +458,10 @@ class BitboardEvaluator:
             passed_mask = self.black_passed_masks[sq]
             if (passed_mask & white_pawns) != 0:
                 continue
+            # Extra bonus for advanced passers (use mirrored rank for black).
+            rel_rank = 7 - r
+            if 0 <= rel_rank < 8:
+                score -= ADVANCED_PASSER_EG_BONUS[rel_rank]
             file_mask = FILES[f]
             rooks_on_file = b_rooks & file_mask
             for rsq in chess.SquareSet(rooks_on_file):
