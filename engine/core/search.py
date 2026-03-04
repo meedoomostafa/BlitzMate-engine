@@ -732,12 +732,15 @@ class SearchEngine:
             if move == tt_move:
                 return 2000000
             elif board.is_capture(move):
-                # MVV-LVA for fast ordering; SEE sign for good/bad split
-                mvv_lva = self._mvv_lva(board, move)
-                if mvv_lva >= 0:
-                    return mvv_lva + 200000  # Good captures.
+                # Use SEE to separate good and bad captures.
+                see_val = self._see(board, move)
+                if see_val >= 0:
+                    # Good captures: MVV-LVA within the good-capture tier.
+                    mvv_lva = self._mvv_lva(board, move)
+                    return mvv_lva + 200000
                 else:
-                    return mvv_lva + 50000  # Likely losing captures.
+                    # Bad captures: below killers and history.
+                    return see_val - 100000
             elif move == self.killers[ply][0]:
                 return 110000
             elif move == self.killers[ply][1]:
