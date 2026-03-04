@@ -408,9 +408,11 @@ class SearchEngine:
 
         # Null-move pruning with adaptive reduction.
         # Disabled in deep endgames (phase <= 6) where zugzwang is common.
+        # Never applied on PV nodes to preserve exact score integrity.
         if (
             depth >= 3
             and not in_check
+            and not is_pv_node
             and ply > 0
             and big_piece_count >= 2
             and game_phase > 6
@@ -423,14 +425,12 @@ class SearchEngine:
             score = -self._negamax(board, depth - R, -beta, -beta + 1, ply + 1)
             board.pop()
             if score >= beta:
-                # Verification search at shallow depths.
-                if depth <= 6:
-                    # Verify with reduced depth to avoid null-move re-trigger.
-                    v_depth = max(1, depth - R - 1)
-                    v_score = self._negamax(board, v_depth, alpha, beta, ply)
-                    if v_score >= beta:
-                        return beta
-                else:
+                # Verification search to guard against zugzwang.
+                # Always verify — endgame depth bonus can push depth well
+                # beyond 6, and zugzwang is common in those positions.
+                v_depth = max(1, depth - R - 1)
+                v_score = self._negamax(board, v_depth, alpha, beta, ply)
+                if v_score >= beta:
                     return beta
 
         # Futility pruning margins (disabled in endgames where slow improvements matter).
