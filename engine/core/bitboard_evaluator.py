@@ -281,6 +281,55 @@ class BitboardEvaluator:
             if (my_pawns & self.neighbor_masks[file]) == 0:
                 score += self.cfg.ISOLATED_PAWN_PENALTY
 
+            # Backward pawn: cannot advance safely and no friendly pawn support.
+            # A pawn is backward if:
+            #   1) No friendly pawn on adjacent files at same or lower rank.
+            #   2) The stop square is controlled by an enemy pawn.
+            if color == chess.WHITE:
+                stop_sq = chess.square(file, rank + 1) if rank < 7 else None
+                # Check if any friendly pawn on adjacent files at same or lower rank.
+                has_support = False
+                for adj_f in [file - 1, file + 1]:
+                    if 0 <= adj_f <= 7:
+                        for r in range(0, rank + 1):
+                            if (1 << chess.square(adj_f, r)) & my_pawns:
+                                has_support = True
+                                break
+                    if has_support:
+                        break
+                if not has_support and stop_sq is not None:
+                    # Check if stop square is attacked by enemy pawn.
+                    # Enemy (black) pawn at (adj_f, rank+2) attacks (file, rank+1).
+                    stop_attacked = False
+                    for adj_f in [file - 1, file + 1]:
+                        if 0 <= adj_f <= 7 and rank + 2 <= 7:
+                            if (1 << chess.square(adj_f, rank + 2)) & opp_pawns:
+                                stop_attacked = True
+                                break
+                    if stop_attacked:
+                        score -= 15  # Backward pawn penalty.
+            else:
+                stop_sq = chess.square(file, rank - 1) if rank > 0 else None
+                has_support = False
+                for adj_f in [file - 1, file + 1]:
+                    if 0 <= adj_f <= 7:
+                        for r in range(rank, 8):
+                            if (1 << chess.square(adj_f, r)) & my_pawns:
+                                has_support = True
+                                break
+                    if has_support:
+                        break
+                if not has_support and stop_sq is not None:
+                    # Enemy (white) pawn at (adj_f, rank-2) attacks (file, rank-1).
+                    stop_attacked = False
+                    for adj_f in [file - 1, file + 1]:
+                        if 0 <= adj_f <= 7 and rank - 2 >= 0:
+                            if (1 << chess.square(adj_f, rank - 2)) & opp_pawns:
+                                stop_attacked = True
+                                break
+                    if stop_attacked:
+                        score -= 15
+
             # Passed Check
             passed_mask = (
                 self.white_passed_masks[sq]
@@ -896,7 +945,7 @@ class BitboardEvaluator:
 
     def _eval_queen_activity(self, board: chess.Board, phase: int) -> int:
         """Penalize passive queen placement; reward central positioning."""
-        if phase < 10:  # Endgame: skip.
+        if phase < 4:  # Endgame: skip.
             return 0
 
         score = 0
