@@ -198,17 +198,29 @@ class SearchEngine:
             if self._stop_event.is_set():
                 break
 
-            # Aspiration windows from depth 4+.
+            # Aspiration windows from depth 4+ with gradual widening.
             if d >= 4:
-                asp_alpha = prev_score - ASPIRATION_WINDOW
-                asp_beta = prev_score + ASPIRATION_WINDOW
+                window = ASPIRATION_WINDOW
+                asp_alpha = prev_score - window
+                asp_beta = prev_score + window
                 score = self._negamax(search_board, d, asp_alpha, asp_beta, 0)
 
-                # Re-search with full window on fail.
+                # Gradual widening on fail: try wider window before full.
                 if not self._stop_event.is_set() and (
                     score <= asp_alpha or score >= asp_beta
                 ):
-                    score = self._negamax(search_board, d, -INF, INF, 0)
+                    window *= 4  # 200cp window.
+                    if score <= asp_alpha:
+                        asp_alpha = prev_score - window
+                    else:
+                        asp_beta = prev_score + window
+                    score = self._negamax(search_board, d, asp_alpha, asp_beta, 0)
+
+                    # If still failing, full window.
+                    if not self._stop_event.is_set() and (
+                        score <= asp_alpha or score >= asp_beta
+                    ):
+                        score = self._negamax(search_board, d, -INF, INF, 0)
             else:
                 score = self._negamax(search_board, d, -INF, INF, 0)
             if self._stop_event.is_set():
@@ -353,9 +365,9 @@ class SearchEngine:
                 except Exception:
                     pass
 
-        # Check extension: extend depth when in check.
+        # Check extension: extend depth when in check (capped to avoid explosion).
         in_check = board.is_check()
-        if in_check:
+        if in_check and ply < self.max_depth * 2:
             depth += 1
 
         alpha_orig = alpha
