@@ -46,6 +46,8 @@ class SearchEngine:
         }
 
         self.killers = defaultdict(lambda: [None, None])
+        self.countermove = {}  # (from_sq, to_sq) -> best response move.
+        self._last_move = None  # Track opponent's last move for countermove heuristic.
 
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -472,6 +474,9 @@ class SearchEngine:
                 gives_check = board.gives_check(move)
 
             board.push(move)
+            # Track last move for countermove heuristic.
+            saved_last_move = self._last_move
+            self._last_move = move
             moves_searched += 1
             needs_full_search = True
             is_killer = move == self.killers[ply][0] or move == self.killers[ply][1]
@@ -516,6 +521,7 @@ class SearchEngine:
                 score = -self._negamax(board, depth - 1, -beta, -alpha, ply + 1)
 
             board.pop()
+            self._last_move = saved_last_move
 
             if self._stop_event.is_set():
                 return 0
@@ -534,6 +540,11 @@ class SearchEngine:
 
                 if alpha >= beta:
                     if not self._stop_event.is_set():
+                        # Update countermove heuristic.
+                        if self._last_move is not None:
+                            self.countermove[
+                                (self._last_move.from_square, self._last_move.to_square)
+                            ] = move
                         self.tt.store(board, depth, best_score, TT_BETA, move)
                     return best_score
 
@@ -745,6 +756,14 @@ class SearchEngine:
                 return 110000
             elif move == self.killers[ply][1]:
                 return 100000
+            elif (
+                hasattr(self, 'countermove')
+                and self._last_move is not None
+                and move == self.countermove.get(
+                    (self._last_move.from_square, self._last_move.to_square)
+                )
+            ):
+                return 95000
             else:
                 return self.history[move.from_square][move.to_square]
 
