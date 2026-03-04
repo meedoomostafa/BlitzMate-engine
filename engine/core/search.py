@@ -88,7 +88,9 @@ class SearchEngine:
             phase += len(board.pieces(pt, chess.BLACK)) * w
         phase = min(phase, 24)
         bonus = max(0, (24 - phase) // 4)
-        return self.max_depth + bonus
+        # Cap total effective depth to max_depth + 3 to avoid extremely long
+        # endgame searches in a Python engine with ~5k NPS.
+        return min(self.max_depth + bonus, self.max_depth + 3)
 
     def get_book_move(self, board: chess.Board) -> Optional[chess.Move]:
         """Probe opening books for a weighted random move. Returns None on miss."""
@@ -345,10 +347,15 @@ class SearchEngine:
         if board.is_repetition(3) or board.halfmove_clock >= 100:
             return 0
 
-        # Twofold repetition → contempt penalty (only at non-root plies).
-        # Small penalty to discourage non-progress loops.
+        # Insufficient material: KvK, KBvK, KNvK → draw.
+        if board.is_insufficient_material():
+            return 0
+
+        # Twofold repetition → dynamic contempt penalty.
+        # Scale contempt with ply to discourage shuffling in winning positions.
+        # Deeper repetitions get stronger penalties (harder to hold advantage).
         if ply > 0 and board.is_repetition(2):
-            return -15
+            return -25
 
         if self.nodes % 2048 == 0 and self._stop_event.is_set():
             return 0
