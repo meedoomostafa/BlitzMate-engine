@@ -187,8 +187,8 @@ class BitboardEvaluator:
         b_pawn_struct = self._eval_pawns_bitwise(black_pawns, white_pawns, chess.BLACK)
 
         # Pawn structure weighted differently per phase.
-        mg_score += int(w_pawn_struct * 0.5)
-        mg_score -= int(b_pawn_struct * 0.5)
+        mg_score += int(w_pawn_struct * 0.85)
+        mg_score -= int(b_pawn_struct * 0.85)
         eg_score += int(w_pawn_struct * 1.0)
         eg_score -= int(b_pawn_struct * 1.0)
 
@@ -208,8 +208,10 @@ class BitboardEvaluator:
         # 4.3 King safety (critical in middlegame, diminishes in endgame).
         ks_score = self._eval_king_safety(board, white_pawns, black_pawns)
         mg_score += ks_score
-        # Scale king safety into EG by phase: full middle-game → 15%, pure endgame → 0%.
-        eg_score += int(ks_score * 0.15 * phase / 24)
+        # Scale king safety into EG: floor of 25% so it never fully vanishes
+        # while rooks/queens remain. Pure pawn endings still get ~0.
+        eg_ks_factor = max(0.25, 0.15 * phase / 24)
+        eg_score += int(ks_score * eg_ks_factor)
 
         # 4.4 Threat detection.
         threat_score = self._eval_threats(board)
@@ -505,8 +507,9 @@ class BitboardEvaluator:
                 pawns_in_shield = (
                     shield_mask & board.pieces_mask(chess.PAWN, chess.WHITE)
                 ).bit_count()
-                if pawns_in_shield < 3:
-                    score -= (3 - pawns_in_shield) * MISSING_SHIELD_PENALTY
+                max_shield = chess.popcount(shield_mask)
+                if pawns_in_shield < max_shield:
+                    score -= (max_shield - pawns_in_shield) * MISSING_SHIELD_PENALTY
 
             # Open/semi-open files adjacent to king.
             for f in range(max(0, w_king_file - 1), min(8, w_king_file + 2)):
