@@ -560,13 +560,19 @@ class SearchEngine:
                 if alpha >= beta:
                     # History malus: penalize all previously searched quiet moves.
                     if not is_cap:
-                        for prev_move in moves[:moves_searched - 1]:
+                        for prev_move in moves[: moves_searched - 1]:
                             if prev_move != move and not board.is_capture(prev_move):
-                                self.history[prev_move.from_square][prev_move.to_square] -= depth * depth
+                                self.history[prev_move.from_square][
+                                    prev_move.to_square
+                                ] -= (depth * depth)
                                 # Clamp to prevent extreme negative values.
-                                self.history[prev_move.from_square][prev_move.to_square] = max(
+                                self.history[prev_move.from_square][
+                                    prev_move.to_square
+                                ] = max(
                                     -100000,
-                                    self.history[prev_move.from_square][prev_move.to_square]
+                                    self.history[prev_move.from_square][
+                                        prev_move.to_square
+                                    ],
                                 )
                     if not self._stop_event.is_set():
                         # Update countermove heuristic.
@@ -786,9 +792,10 @@ class SearchEngine:
             elif move == self.killers[ply][1]:
                 return 100000
             elif (
-                hasattr(self, 'countermove')
+                hasattr(self, "countermove")
                 and self._last_move is not None
-                and move == self.countermove.get(
+                and move
+                == self.countermove.get(
                     (self._last_move.from_square, self._last_move.to_square)
                 )
             ):
