@@ -19,10 +19,15 @@ import chess
 import pytest
 from collections import defaultdict
 
-from engine.core.search import SearchEngine, MATE_SCORE, INF, MATE_THRESHOLD, SEE_PIECE_VALUES
+from engine.core.search import (
+    SearchEngine,
+    MATE_SCORE,
+    INF,
+    MATE_THRESHOLD,
+    SEE_PIECE_VALUES,
+)
 from engine.core.bitboard_evaluator import BitboardEvaluator
 from engine.core.transposition import TranspositionTable, TT_EXACT, TT_ALPHA, TT_BETA
-
 
 # ════════════════════════════════════════════════════════════════════════════
 #  TT MATE SCORE PLY NORMALIZATION
@@ -415,9 +420,9 @@ class TestHistoryCap:
         for from_sq in range(64):
             for to_sq in range(64):
                 val = engine.history[from_sq][to_sq]
-                assert -90000 <= val <= 90000, (
-                    f"History[{chess.square_name(from_sq)}][{chess.square_name(to_sq)}] = {val}"
-                )
+                assert (
+                    -90000 <= val <= 90000
+                ), f"History[{chess.square_name(from_sq)}][{chess.square_name(to_sq)}] = {val}"
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -487,6 +492,7 @@ class TestNMPVerification:
             "r1bqkb1r/pppppppp/2n2n2/8/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3"
         )
         import time
+
         start = time.time()
         engine.search_best_move(board)
         elapsed = time.time() - start
