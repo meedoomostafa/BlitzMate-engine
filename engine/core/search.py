@@ -513,6 +513,9 @@ class SearchEngine:
             if iid_entry and iid_entry.best_move:
                 tt_move = iid_entry.best_move
 
+        # Singular extension flag (disabled — too expensive for Python NPS).
+        singular_move = None
+
         # Futility pruning margins (disabled in endgames where slow improvements matter).
         futility_margin = [0, 200, 350, 500]
         can_futility_prune = (
@@ -579,6 +582,14 @@ class SearchEngine:
             needs_full_search = True
             is_killer = move == self.killers[ply][0] or move == self.killers[ply][1]
 
+            # Apply singular extension: extend by 1 ply for the singular TT move.
+            extension = 0
+            if singular_move is not None and move == singular_move:
+                extension = 1
+
+            # Effective depth with extensions applied.
+            new_depth_base = depth - 1 + extension
+
             # Late move reductions (table-based).
             if (
                 depth >= 3
@@ -587,6 +598,7 @@ class SearchEngine:
                 and not move.promotion
                 and not is_killer
                 and not in_check
+                and extension == 0
             ):
                 if gives_check:
                     pass  # Never reduce checking moves.
@@ -607,7 +619,7 @@ class SearchEngine:
                         r += 1
 
                     r = max(1, r)  # At least reduce by 1
-                    new_depth = max(0, depth - 1 - r)
+                    new_depth = max(0, new_depth_base - r)
 
                     score = -self._negamax(
                         board, new_depth, -alpha - 1, -alpha, ply + 1
@@ -615,15 +627,15 @@ class SearchEngine:
                     needs_full_search = score > alpha
             elif not is_pv_node and moves_searched > 1:
                 # PVS: null-window search for non-PV moves.
-                score = -self._negamax(board, depth - 1, -alpha - 1, -alpha, ply + 1)
+                score = -self._negamax(board, new_depth_base, -alpha - 1, -alpha, ply + 1)
                 needs_full_search = score > alpha
             elif is_pv_node and moves_searched > 1:
                 # PVS for PV nodes: first move gets full window, rest get null-window.
-                score = -self._negamax(board, depth - 1, -alpha - 1, -alpha, ply + 1)
+                score = -self._negamax(board, new_depth_base, -alpha - 1, -alpha, ply + 1)
                 needs_full_search = score > alpha
 
             if needs_full_search:
-                score = -self._negamax(board, depth - 1, -beta, -alpha, ply + 1)
+                score = -self._negamax(board, new_depth_base, -beta, -alpha, ply + 1)
 
             board.pop()
             self._last_move = saved_last_move
@@ -686,6 +698,39 @@ class SearchEngine:
 
         if not self._stop_event.is_set():
             self.tt.store(board, depth, best_score, flag, best_move_found)
+        return best_score
+
+    def _negamax_excluded(
+        self, board: chess.Board, depth: int, alpha: int, beta: int,
+        ply: int, excluded_move: chess.Move
+    ) -> int:
+        """Simplified negamax that skips the excluded move. Used for singular extensions."""
+        self.nodes += 1
+        if depth <= 0:
+            return self._quiescence(board, alpha, beta, ply=ply)
+
+        in_check = board.is_check()
+        if in_check:
+            depth += 1
+
+        best_score = -INF
+        for move in board.legal_moves:
+            if move == excluded_move:
+                continue
+            board.push(move)
+            score = -self._negamax(board, depth - 1, -beta, -alpha, ply + 1)
+            board.pop()
+            if score > best_score:
+                best_score = score
+            if score >= beta:
+                return score
+            if score > alpha:
+                alpha = score
+
+        if best_score == -INF:
+            # Only the excluded move was legal.
+            return alpha
+
         return best_score
 
     def _quiescence(
@@ -863,6 +908,11 @@ class SearchEngine:
         def score_move(move):
             if move == tt_move:
                 return 2000000
+            elif move.promotion:
+                # Queen promotions scored very high, under-promotions lower.
+                promo_val = {chess.QUEEN: 1500000, chess.ROOK: 1400000,
+                             chess.BISHOP: 1300000, chess.KNIGHT: 1350000}
+                return promo_val.get(move.promotion, 1300000)
             elif board.is_capture(move):
                 # Use SEE to separate good and bad captures.
                 see_val = self._see(board, move)
