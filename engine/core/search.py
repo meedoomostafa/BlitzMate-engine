@@ -691,7 +691,13 @@ class SearchEngine:
                             self.countermove[
                                 (self._last_move.from_square, self._last_move.to_square)
                             ] = move
-                        self.tt.store(board, depth, self._score_to_tt(best_score, ply), TT_BETA, move)
+                        self.tt.store(
+                            board,
+                            depth,
+                            self._score_to_tt(best_score, ply),
+                            TT_BETA,
+                            move,
+                        )
                     return best_score
 
         if moves_searched == 0:
@@ -710,7 +716,9 @@ class SearchEngine:
             flag = TT_EXACT
 
         if not self._stop_event.is_set():
-            self.tt.store(board, depth, self._score_to_tt(best_score, ply), flag, best_move_found)
+            self.tt.store(
+                board, depth, self._score_to_tt(best_score, ply), flag, best_move_found
+            )
         return best_score
 
     def _negamax_excluded(
@@ -816,7 +824,8 @@ class SearchEngine:
             # missing push-promotions (e.g. a7a8q) which are worth ~900cp.
             captures = list(board.generate_legal_captures())
             quiet_promos = [
-                m for m in board.legal_moves
+                m
+                for m in board.legal_moves
                 if m.promotion == chess.QUEEN and not board.is_capture(m)
             ]
 
@@ -824,7 +833,11 @@ class SearchEngine:
                 # Include non-capture checking moves at first QS ply.
                 check_moves = []
                 for move in board.legal_moves:
-                    if not board.is_capture(move) and not move.promotion and board.gives_check(move):
+                    if (
+                        not board.is_capture(move)
+                        and not move.promotion
+                        and board.gives_check(move)
+                    ):
                         check_moves.append(move)
                 moves = captures + quiet_promos + check_moves
             else:
@@ -910,7 +923,7 @@ class SearchEngine:
 
         # Track occupancy for x-ray discovery.
         occ = int(board.occupied)
-        occ ^= (1 << from_sq)  # Remove initial attacker
+        occ ^= 1 << from_sq  # Remove initial attacker
 
         # Collect all known attackers (direct + discovered).
         known_attackers = set()
@@ -935,7 +948,11 @@ class SearchEngine:
                 if not (occ & (1 << sq)):
                     continue  # Already consumed
                 p = board.piece_at(sq)
-                if p is not None and p.color == side and SEE_PIECE_VALUES[p.piece_type] < min_val:
+                if (
+                    p is not None
+                    and p.color == side
+                    and SEE_PIECE_VALUES[p.piece_type] < min_val
+                ):
                     min_val = SEE_PIECE_VALUES[p.piece_type]
                     best_atk_sq = sq
 
@@ -949,7 +966,7 @@ class SearchEngine:
             if max(-gain[d - 1], gain[d]) < 0:
                 break
 
-            occ ^= (1 << best_atk_sq)
+            occ ^= 1 << best_atk_sq
             current_attacker_val = min_val
 
             # Discover x-ray behind consumed piece.
