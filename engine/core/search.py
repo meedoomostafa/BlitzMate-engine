@@ -501,12 +501,15 @@ class SearchEngine:
             score = -self._negamax(board, depth - R, -beta, -beta + 1, ply + 1)
             board.pop()
             if score >= beta:
-                # Verification search to guard against zugzwang.
-                # Always verify — endgame depth bonus can push depth well
-                # beyond 6, and zugzwang is common in those positions.
-                v_depth = max(1, depth - R - 1)
-                v_score = self._negamax(board, v_depth, alpha, beta, ply)
-                if v_score >= beta:
+                # Verification search: only in positions where zugzwang
+                # is possible (endgame-adjacent, phase <= 16). Pure middlegame
+                # positions (phase > 16) are almost never zugzwang.
+                if game_phase <= 16:
+                    v_depth = max(1, depth - R - 1)
+                    v_score = self._negamax(board, v_depth, alpha, beta, ply)
+                    if v_score >= beta:
+                        return beta
+                else:
                     return beta
 
         # Internal Iterative Deepening: when no TT move at a PV node,
@@ -621,8 +624,9 @@ class SearchEngine:
                     hist_score = self.history[move.from_square][move.to_square]
                     if hist_score > 1000:
                         r = max(0, r - 1)
-                    # Reduce more when position is not improving.
-                    if not improving:
+                    # Reduce more when position is not improving,
+                    # but NOT at shallow depths where it would send to QS.
+                    if not improving and depth > 3:
                         r += 1
 
                     r = max(1, r)  # At least reduce by 1
