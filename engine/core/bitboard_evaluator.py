@@ -444,8 +444,8 @@ class BitboardEvaluator:
         ROOK_BEHIND_PASSER_BONUS = 50
         CONNECTED_PASSER_BONUS = 20  # Halved: each pair counted from both sides.
         # Extra EG bonus for advanced passers (by relative rank).
-        # rank 0-4: 0, rank 5: 30, rank 6: 80 (on top of existing PASSED_PAWN_BONUS).
-        ADVANCED_PASSER_EG_BONUS = [0, 0, 0, 0, 0, 30, 80, 0]
+        # Rank 7 (about to promote) gets the largest bonus.
+        ADVANCED_PASSER_EG_BONUS = [0, 0, 0, 0, 10, 50, 150, 250]
         score = 0
 
         # --- White ---

@@ -21,6 +21,9 @@ TB_WIN_SCORE = 800000
 # SEE piece values indexed by chess.piece_type (PAWN=1 .. KING=6).
 SEE_PIECE_VALUES = [0, 100, 320, 330, 500, 900, 20000]
 
+# Threshold for distinguishing mate scores from regular scores.
+MATE_THRESHOLD = MATE_SCORE - 500
+
 # Precomputed LMR reduction table: LMR_TABLE[depth][move_index].
 MAX_LMR_DEPTH = 64
 MAX_LMR_MOVES = 64
@@ -415,14 +418,15 @@ class SearchEngine:
         tt_move = None
 
         if tt_entry and tt_entry.depth >= depth:
+            tt_value = self._score_from_tt(tt_entry.value, ply)
             if tt_entry.flag == TT_EXACT:
-                return tt_entry.value
+                return tt_value
             elif tt_entry.flag == TT_ALPHA:
-                beta = min(beta, tt_entry.value)
+                beta = min(beta, tt_value)
             elif tt_entry.flag == TT_BETA:
-                alpha = max(alpha, tt_entry.value)
+                alpha = max(alpha, tt_value)
             if alpha >= beta:
-                return tt_entry.value
+                return tt_value
 
         if tt_entry:
             tt_move = tt_entry.best_move
@@ -540,6 +544,7 @@ class SearchEngine:
         best_move_found = None
 
         moves_searched = 0
+        searched_quiets = []  # Track actually-searched quiet moves for history malus.
 
         for move in moves:
             is_cap = board.is_capture(move)
@@ -579,6 +584,8 @@ class SearchEngine:
             saved_last_move = self._last_move
             self._last_move = move
             moves_searched += 1
+            if not is_cap:
+                searched_quiets.append(move)
             needs_full_search = True
             is_killer = move == self.killers[ply][0] or move == self.killers[ply][1]
 
@@ -625,12 +632,6 @@ class SearchEngine:
                         board, new_depth, -alpha - 1, -alpha, ply + 1
                     )
                     needs_full_search = score > alpha
-            elif not is_pv_node and moves_searched > 1:
-                # PVS: null-window search for non-PV moves.
-                score = -self._negamax(
-                    board, new_depth_base, -alpha - 1, -alpha, ply + 1
-                )
-                needs_full_search = score > alpha
             elif is_pv_node and moves_searched > 1:
                 # PVS for PV nodes: first move gets full window, rest get null-window.
                 score = -self._negamax(
@@ -655,15 +656,19 @@ class SearchEngine:
                 alpha = score
                 if not is_cap:
                     self.history[move.from_square][move.to_square] += depth * depth
+                    # Cap history to prevent quiet moves from outranking captures.
+                    self.history[move.from_square][move.to_square] = min(
+                        90000, self.history[move.from_square][move.to_square]
+                    )
                     if move != self.killers[ply][0]:
                         self.killers[ply][1] = self.killers[ply][0]
                         self.killers[ply][0] = move
 
                 if alpha >= beta:
-                    # History malus: penalize all previously searched quiet moves.
+                    # History malus: penalize actually-searched quiet moves that failed.
                     if not is_cap:
-                        for prev_move in moves[: moves_searched - 1]:
-                            if prev_move != move and not board.is_capture(prev_move):
+                        for prev_move in searched_quiets:
+                            if prev_move != move:
                                 self.history[prev_move.from_square][
                                     prev_move.to_square
                                 ] -= (depth * depth)
@@ -671,7 +676,7 @@ class SearchEngine:
                                 self.history[prev_move.from_square][
                                     prev_move.to_square
                                 ] = max(
-                                    -100000,
+                                    -90000,
                                     self.history[prev_move.from_square][
                                         prev_move.to_square
                                     ],
@@ -682,7 +687,7 @@ class SearchEngine:
                             self.countermove[
                                 (self._last_move.from_square, self._last_move.to_square)
                             ] = move
-                        self.tt.store(board, depth, best_score, TT_BETA, move)
+                        self.tt.store(board, depth, self._score_to_tt(best_score, ply), TT_BETA, move)
                     return best_score
 
         if moves_searched == 0:
@@ -701,7 +706,7 @@ class SearchEngine:
             flag = TT_EXACT
 
         if not self._stop_event.is_set():
-            self.tt.store(board, depth, best_score, flag, best_move_found)
+            self.tt.store(board, depth, self._score_to_tt(best_score, ply), flag, best_move_found)
         return best_score
 
     def _negamax_excluded(
@@ -742,6 +747,24 @@ class SearchEngine:
 
         return best_score
 
+    @staticmethod
+    def _score_to_tt(score: int, ply: int) -> int:
+        """Convert a search score to TT storage format (ply-normalize mate scores)."""
+        if score > MATE_THRESHOLD:
+            return score + ply
+        if score < -MATE_THRESHOLD:
+            return score - ply
+        return score
+
+    @staticmethod
+    def _score_from_tt(score: int, ply: int) -> int:
+        """Convert a TT-stored score back to search score at the given ply."""
+        if score > MATE_THRESHOLD:
+            return score - ply
+        if score < -MATE_THRESHOLD:
+            return score + ply
+        return score
+
     def _quiescence(
         self, board: chess.Board, alpha: int, beta: int, qs_depth: int = 0, ply: int = 0
     ) -> int:
@@ -777,29 +800,38 @@ class SearchEngine:
             stand_pat = self.evaluator.evaluate(board)
             if stand_pat >= beta:
                 return stand_pat
-            # Delta pruning.
-            if stand_pat < alpha - 975:
+            # Delta pruning: skip if too far below alpha to catch up.
+            # Threshold must cover queen promotion (~900) + possible capture (~900).
+            if stand_pat < alpha - 1400:
                 return stand_pat
             if stand_pat > alpha:
                 alpha = stand_pat
 
-            # Generate captures; include non-capture checks at first QS ply.
+            # Generate captures + non-capture queen promotions.
+            # python-chess generate_legal_captures() only includes capture-promotions,
+            # missing push-promotions (e.g. a7a8q) which are worth ~900cp.
             captures = list(board.generate_legal_captures())
+            quiet_promos = [
+                m for m in board.legal_moves
+                if m.promotion == chess.QUEEN and not board.is_capture(m)
+            ]
 
             if qs_depth == 0:
                 # Include non-capture checking moves at first QS ply.
                 check_moves = []
                 for move in board.legal_moves:
-                    if not board.is_capture(move) and board.gives_check(move):
+                    if not board.is_capture(move) and not move.promotion and board.gives_check(move):
                         check_moves.append(move)
-                moves = captures + check_moves
+                moves = captures + quiet_promos + check_moves
             else:
-                moves = captures
+                moves = captures + quiet_promos
 
-        # Sort moves: captures by MVV-LVA (fast), checks lower priority
+        # Sort moves: captures by MVV-LVA, quiet promotions high, checks lower
         def qs_move_score(m):
             if board.is_capture(m):
                 return self._mvv_lva(board, m) + 100000
+            elif m.promotion:
+                return 150000  # Quiet queen promotions above captures
             else:
                 return 50000  # Non-capture checks get medium priority
 
@@ -841,7 +873,7 @@ class SearchEngine:
         return best_score
 
     def _see(self, board: chess.Board, move: chess.Move) -> int:
-        """Static Exchange Evaluation: estimate material gain/loss of a capture sequence."""
+        """Static Exchange Evaluation with x-ray attack discovery."""
         to_sq = move.to_square
         from_sq = move.from_square
 
@@ -864,7 +896,7 @@ class SearchEngine:
         if attacker_val <= captured_val:
             return captured_val - attacker_val
 
-        # Iterative SEE with gain array.
+        # Iterative SEE with gain array and x-ray discovery.
         gain = [0] * 32
         gain[0] = captured_val
 
@@ -872,11 +904,40 @@ class SearchEngine:
         side = not attacker.color  # Opponent moves next
         d = 0
 
-        # Track consumed squares.
-        used = chess.SquareSet()
-        used.add(from_sq)
+        # Track occupancy for x-ray discovery.
+        occ = int(board.occupied)
+        occ ^= (1 << from_sq)  # Remove initial attacker
+
+        # Collect all known attackers (direct + discovered).
+        known_attackers = set()
+        for sq in board.attackers(chess.WHITE, to_sq):
+            if sq != from_sq:
+                known_attackers.add(sq)
+        for sq in board.attackers(chess.BLACK, to_sq):
+            if sq != from_sq:
+                known_attackers.add(sq)
+
+        # Discover x-ray behind initial attacker.
+        xray_sq = self._discover_xray(board, to_sq, from_sq, occ)
+        if xray_sq is not None:
+            known_attackers.add(xray_sq)
 
         while True:
+            # Find least valuable attacker BEFORE computing gain (avoids phantom values).
+            best_atk_sq = None
+            min_val = 20001
+
+            for sq in known_attackers:
+                if not (occ & (1 << sq)):
+                    continue  # Already consumed
+                p = board.piece_at(sq)
+                if p is not None and p.color == side and SEE_PIECE_VALUES[p.piece_type] < min_val:
+                    min_val = SEE_PIECE_VALUES[p.piece_type]
+                    best_atk_sq = sq
+
+            if best_atk_sq is None:
+                break
+
             d += 1
             gain[d] = current_attacker_val - gain[d - 1]
 
@@ -884,24 +945,14 @@ class SearchEngine:
             if max(-gain[d - 1], gain[d]) < 0:
                 break
 
-            # Find least valuable attacker for the side to move.
-            attackers = board.attackers(side, to_sq)
-            best_atk_sq = None
-            min_val = 20001
-
-            for sq in attackers:
-                if sq in used:
-                    continue
-                p = board.piece_at(sq)
-                if p is not None and SEE_PIECE_VALUES[p.piece_type] < min_val:
-                    min_val = SEE_PIECE_VALUES[p.piece_type]
-                    best_atk_sq = sq
-
-            if best_atk_sq is None:
-                break
-
-            used.add(best_atk_sq)
+            occ ^= (1 << best_atk_sq)
             current_attacker_val = min_val
+
+            # Discover x-ray behind consumed piece.
+            xray_sq = self._discover_xray(board, to_sq, best_atk_sq, occ)
+            if xray_sq is not None:
+                known_attackers.add(xray_sq)
+
             side = not side
 
         # Negamax the gain array.
@@ -910,6 +961,48 @@ class SearchEngine:
             d -= 1
 
         return gain[0]
+
+    def _discover_xray(
+        self, board: chess.Board, to_sq: int, consumed_sq: int, occ: int
+    ) -> Optional[int]:
+        """After consuming a piece at consumed_sq, discover sliding x-ray attacker behind it."""
+        to_r = chess.square_rank(to_sq)
+        to_f = chess.square_file(to_sq)
+        c_r = chess.square_rank(consumed_sq)
+        c_f = chess.square_file(consumed_sq)
+
+        dr = c_r - to_r
+        df = c_f - to_f
+
+        # Must be on a ray (same rank, same file, or diagonal).
+        is_diagonal = abs(dr) == abs(df) and dr != 0
+        is_straight = (dr == 0) != (df == 0)
+
+        if not is_diagonal and not is_straight:
+            return None  # Not on a ray (e.g. knight relationship).
+
+        # Normalize to unit direction.
+        if dr != 0:
+            dr = dr // abs(dr)
+        if df != 0:
+            df = df // abs(df)
+
+        # Scan beyond consumed_sq along the ray.
+        r, f = c_r + dr, c_f + df
+        while 0 <= r <= 7 and 0 <= f <= 7:
+            sq = chess.square(f, r)
+            if occ & (1 << sq):
+                p = board.piece_at(sq)
+                if p is not None:
+                    if is_diagonal and p.piece_type in (chess.BISHOP, chess.QUEEN):
+                        return sq
+                    if is_straight and p.piece_type in (chess.ROOK, chess.QUEEN):
+                        return sq
+                return None  # Blocked by non-slider or wrong type.
+            r += dr
+            f += df
+
+        return None
 
     def _order_moves(self, board: chess.Board, tt_move: Optional[chess.Move], ply: int):
         """Sort legal moves: TT move > good captures > killers > history heuristic."""
