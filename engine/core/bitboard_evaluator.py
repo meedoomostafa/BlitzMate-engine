@@ -269,6 +269,32 @@ class BitboardEvaluator:
             eg_score += self._king_center_bonus[w_king_sq]
             eg_score -= self._king_center_bonus[b_king_sq]
 
+        # 4.13 Rook on 7th rank bonus.
+        rook7_mg, rook7_eg = self._eval_rook_7th(board)
+        mg_score += rook7_mg
+        eg_score += rook7_eg
+
+        # 4.14 Connected rooks bonus.
+        conn_rook_score = self._eval_connected_rooks(board)
+        mg_score += conn_rook_score
+        eg_score += conn_rook_score
+
+        # 4.15 Space advantage.
+        space_score = self._eval_space(board, white_pawns, black_pawns)
+        mg_score += space_score
+
+        # 4.16 Tempo bonus: small advantage for side to move.
+        TEMPO_BONUS = 10
+        if board.turn == chess.WHITE:
+            mg_score += TEMPO_BONUS
+        else:
+            mg_score -= TEMPO_BONUS
+
+        # 4.17 Bishop vs Knight imbalance based on pawn structure.
+        bn_score = self._eval_bishop_knight_imbalance(board, white_pawns, black_pawns)
+        mg_score += bn_score
+        eg_score += bn_score
+
         # Tapered eval: blend MG/EG scores by remaining material.
         phase = min(phase, 24)
         self.last_phase = phase  # Cache for external use (e.g., search pruning).
@@ -1008,5 +1034,98 @@ class BitboardEvaluator:
             # Back-rank penalty.
             if r == 7 and phase < 22:
                 score += BACK_RANK_PENALTY
+
+        return score
+
+    def _eval_rook_7th(
+        self, board: chess.Board
+    ) -> tuple:
+        """Bonus for rooks on 7th rank (2nd for Black). Especially strong
+        when enemy king is on 8th rank or there are enemy pawns on 7th."""
+        ROOK_7TH_MG = 20
+        ROOK_7TH_EG = 40
+        ROOK_7TH_KING_BONUS = 10  # Extra when enemy king on 8th.
+        mg = 0
+        eg = 0
+
+        b_king_sq = board.king(chess.BLACK)
+        w_king_sq = board.king(chess.WHITE)
+
+        for sq in board.pieces(chess.ROOK, chess.WHITE):
+            if chess.square_rank(sq) == 6:  # 7th rank (0-indexed).
+                mg += ROOK_7TH_MG
+                eg += ROOK_7TH_EG
+                if b_king_sq is not None and chess.square_rank(b_king_sq) == 7:
+                    mg += ROOK_7TH_KING_BONUS
+                    eg += ROOK_7TH_KING_BONUS
+
+        for sq in board.pieces(chess.ROOK, chess.BLACK):
+            if chess.square_rank(sq) == 1:  # 2nd rank (7th for Black).
+                mg -= ROOK_7TH_MG
+                eg -= ROOK_7TH_EG
+                if w_king_sq is not None and chess.square_rank(w_king_sq) == 0:
+                    mg -= ROOK_7TH_KING_BONUS
+                    eg -= ROOK_7TH_KING_BONUS
+
+        return mg, eg
+
+    def _eval_connected_rooks(self, board: chess.Board) -> int:
+        """Bonus when two rooks can see each other (same rank or file, no pieces between)."""
+        CONNECTED_ROOK_BONUS = 15
+        score = 0
+
+        for color in (chess.WHITE, chess.BLACK):
+            rooks = list(board.pieces(chess.ROOK, color))
+            sign = 1 if color == chess.WHITE else -1
+            if len(rooks) >= 2:
+                r1, r2 = rooks[0], rooks[1]
+                # Check if they attack each other (line of sight).
+                if r2 in board.attacks(r1):
+                    score += sign * CONNECTED_ROOK_BONUS
+
+        return score
+
+    def _eval_space(
+        self, board: chess.Board, white_pawns: int, black_pawns: int
+    ) -> int:
+        """Space advantage: reward pawns advanced into center ranks (fast bitboard)."""
+        SPACE_WEIGHT = 2
+        # Mask for ranks 3-6 (0-indexed ranks 2-5).
+        RANK_3_6_MASK = 0x0000FFFFFFFF0000
+        w_space = chess.popcount(white_pawns & RANK_3_6_MASK)
+        b_space = chess.popcount(black_pawns & RANK_3_6_MASK)
+        return (w_space - b_space) * SPACE_WEIGHT
+
+    def _eval_bishop_knight_imbalance(
+        self, board: chess.Board, white_pawns: int, black_pawns: int
+    ) -> int:
+        """Bishop vs Knight imbalance: bishops are better in open positions,
+        knights are better in closed positions with many pawns.
+
+        Metric: total pawn count. Many pawns = closed = knight bonus.
+        Few pawns = open = bishop bonus.
+        """
+        total_pawns = chess.popcount(white_pawns | black_pawns)
+        # threshold: 10 pawns = neutral, <10 = open (bishop bonus), >10 = closed (knight bonus)
+        openness = 10 - total_pawns  # positive = open, negative = closed
+        BONUS_PER_PAWN = 5  # 5cp per pawn difference from threshold
+
+        score = 0
+        w_bishops = len(board.pieces(chess.BISHOP, chess.WHITE))
+        w_knights = len(board.pieces(chess.KNIGHT, chess.WHITE))
+        b_bishops = len(board.pieces(chess.BISHOP, chess.BLACK))
+        b_knights = len(board.pieces(chess.KNIGHT, chess.BLACK))
+
+        # White: bonus for bishops in open, knights in closed
+        if w_bishops > w_knights:
+            score += openness * BONUS_PER_PAWN  # open = positive bonus for bishop side
+        elif w_knights > w_bishops:
+            score -= openness * BONUS_PER_PAWN  # open = penalty for knight side
+
+        # Black: same logic, inverted
+        if b_bishops > b_knights:
+            score -= openness * BONUS_PER_PAWN
+        elif b_knights > b_bishops:
+            score += openness * BONUS_PER_PAWN
 
         return score
