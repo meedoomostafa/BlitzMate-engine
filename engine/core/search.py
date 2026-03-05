@@ -48,6 +48,7 @@ class SearchEngine:
         self.killers = defaultdict(lambda: [None, None])
         self.countermove = {}  # (from_sq, to_sq) -> best response move.
         self._last_move = None  # Track opponent's last move for countermove heuristic.
+        self._eval_stack = [0] * 128  # Static eval at each ply for improving heuristic.
 
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -277,10 +278,40 @@ class SearchEngine:
             self.tt.new_search()
             start_time = time.time()
 
+            ASPIRATION_WINDOW = 50
+            prev_score = 0
+
             for d in range(1, target_depth + 1):
                 if self._stop_event.is_set():
                     break
-                score = self._negamax(search_board, d, -INF, INF, 0)
+
+                # Aspiration windows from depth 4+.
+                if d >= 4:
+                    window = ASPIRATION_WINDOW
+                    asp_alpha = prev_score - window
+                    asp_beta = prev_score + window
+                    score = self._negamax(search_board, d, asp_alpha, asp_beta, 0)
+
+                    if not self._stop_event.is_set() and (
+                        score <= asp_alpha or score >= asp_beta
+                    ):
+                        window *= 4
+                        if score <= asp_alpha:
+                            asp_alpha = prev_score - window
+                        else:
+                            asp_beta = prev_score + window
+                        score = self._negamax(search_board, d, asp_alpha, asp_beta, 0)
+
+                        if not self._stop_event.is_set() and (
+                            score <= asp_alpha or score >= asp_beta
+                        ):
+                            score = self._negamax(search_board, d, -INF, INF, 0)
+                else:
+                    score = self._negamax(search_board, d, -INF, INF, 0)
+
+                if self._stop_event.is_set():
+                    break
+                prev_score = score
 
                 entry = self.tt.get(search_board)
                 if entry:
@@ -415,15 +446,35 @@ class SearchEngine:
         # Reuses phase cached by evaluator to avoid redundant piece counting.
         static_eval = self.evaluator.evaluate(board)
         game_phase = self.evaluator.last_phase
+        self._eval_stack[ply] = static_eval
+
+        # Improving heuristic: is our position getting better compared to 2 plies ago?
+        # When not improving, we can be more aggressive with pruning.
+        improving = ply >= 2 and static_eval > self._eval_stack[ply - 2]
+
+        # Razoring: at shallow depths, if static eval is far below alpha,
+        # verification via quiescence. If qsearch confirms, return immediately.
+        if (
+            depth <= 2
+            and not in_check
+            and not is_pv_node
+            and abs(alpha) < MATE_SCORE - 100
+            and static_eval + 300 * depth <= alpha
+        ):
+            qs_score = self._quiescence(board, alpha, beta, ply=ply)
+            if qs_score <= alpha:
+                return qs_score
 
         # Reverse futility pruning (disabled in endgames where eval is unreliable).
+        # Tighter margin when position is improving (harder to prune).
+        rfp_margin = 100 * depth if improving else 120 * depth
         if (
             depth <= 3
             and not in_check
             and not is_pv_node
             and game_phase > 8
             and abs(alpha) < MATE_SCORE - 100
-            and static_eval - 120 * depth >= beta
+            and static_eval - rfp_margin >= beta
         ):
             return static_eval
 
@@ -454,6 +505,14 @@ class SearchEngine:
                 if v_score >= beta:
                     return beta
 
+        # Internal Iterative Deepening: when no TT move at a PV node,
+        # do a reduced search to find a move for better ordering.
+        if is_pv_node and tt_move is None and depth >= 4:
+            self._negamax(board, depth - 2, alpha, beta, ply)
+            iid_entry = self.tt.get(board)
+            if iid_entry and iid_entry.best_move:
+                tt_move = iid_entry.best_move
+
         # Futility pruning margins (disabled in endgames where slow improvements matter).
         futility_margin = [0, 200, 350, 500]
         can_futility_prune = (
@@ -465,6 +524,14 @@ class SearchEngine:
             and static_eval + futility_margin[depth] <= alpha
         )
 
+        # Late Move Pruning (LMP): at shallow depths, limit how many quiet
+        # moves we search. The idea is that late moves are unlikely to be best.
+        lmp_threshold = 0
+        if depth <= 3 and not in_check and not is_pv_node and game_phase > 8:
+            lmp_threshold = 3 + depth * depth  # d1=4, d2=7, d3=12
+            if not improving:
+                lmp_threshold = lmp_threshold * 3 // 4  # Tighter when not improving.
+
         moves = self._order_moves(board, tt_move, ply)
         best_score = -INF
         best_move_found = None
@@ -475,6 +542,18 @@ class SearchEngine:
             is_cap = board.is_capture(move)
             # Lazy gives_check: only compute when actually needed (saves ~11% time)
             gives_check = None
+
+            # Late Move Pruning: skip late quiet moves at shallow depths.
+            if (
+                lmp_threshold > 0
+                and moves_searched >= lmp_threshold
+                and not is_cap
+                and not move.promotion
+            ):
+                if gives_check is None:
+                    gives_check = board.gives_check(move)
+                if not gives_check:
+                    continue
 
             # Futility pruning: skip quiet moves unlikely to raise alpha.
             if (
@@ -523,6 +602,9 @@ class SearchEngine:
                     hist_score = self.history[move.from_square][move.to_square]
                     if hist_score > 1000:
                         r = max(0, r - 1)
+                    # Reduce more when position is not improving.
+                    if not improving:
+                        r += 1
 
                     r = max(1, r)  # At least reduce by 1
                     new_depth = max(0, depth - 1 - r)
@@ -533,6 +615,10 @@ class SearchEngine:
                     needs_full_search = score > alpha
             elif not is_pv_node and moves_searched > 1:
                 # PVS: null-window search for non-PV moves.
+                score = -self._negamax(board, depth - 1, -alpha - 1, -alpha, ply + 1)
+                needs_full_search = score > alpha
+            elif is_pv_node and moves_searched > 1:
+                # PVS for PV nodes: first move gets full window, rest get null-window.
                 score = -self._negamax(board, depth - 1, -alpha - 1, -alpha, ply + 1)
                 needs_full_search = score > alpha
 
