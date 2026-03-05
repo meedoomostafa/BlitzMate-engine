@@ -1037,9 +1037,7 @@ class BitboardEvaluator:
 
         return score
 
-    def _eval_rook_7th(
-        self, board: chess.Board
-    ) -> tuple:
+    def _eval_rook_7th(self, board: chess.Board) -> tuple:
         """Bonus for rooks on 7th rank (2nd for Black). Especially strong
         when enemy king is on 8th rank or there are enemy pawns on 7th."""
         ROOK_7TH_MG = 20

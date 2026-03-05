@@ -627,11 +627,15 @@ class SearchEngine:
                     needs_full_search = score > alpha
             elif not is_pv_node and moves_searched > 1:
                 # PVS: null-window search for non-PV moves.
-                score = -self._negamax(board, new_depth_base, -alpha - 1, -alpha, ply + 1)
+                score = -self._negamax(
+                    board, new_depth_base, -alpha - 1, -alpha, ply + 1
+                )
                 needs_full_search = score > alpha
             elif is_pv_node and moves_searched > 1:
                 # PVS for PV nodes: first move gets full window, rest get null-window.
-                score = -self._negamax(board, new_depth_base, -alpha - 1, -alpha, ply + 1)
+                score = -self._negamax(
+                    board, new_depth_base, -alpha - 1, -alpha, ply + 1
+                )
                 needs_full_search = score > alpha
 
             if needs_full_search:
@@ -701,8 +705,13 @@ class SearchEngine:
         return best_score
 
     def _negamax_excluded(
-        self, board: chess.Board, depth: int, alpha: int, beta: int,
-        ply: int, excluded_move: chess.Move
+        self,
+        board: chess.Board,
+        depth: int,
+        alpha: int,
+        beta: int,
+        ply: int,
+        excluded_move: chess.Move,
     ) -> int:
         """Simplified negamax that skips the excluded move. Used for singular extensions."""
         self.nodes += 1
@@ -910,8 +919,12 @@ class SearchEngine:
                 return 2000000
             elif move.promotion:
                 # Queen promotions scored very high, under-promotions lower.
-                promo_val = {chess.QUEEN: 1500000, chess.ROOK: 1400000,
-                             chess.BISHOP: 1300000, chess.KNIGHT: 1350000}
+                promo_val = {
+                    chess.QUEEN: 1500000,
+                    chess.ROOK: 1400000,
+                    chess.BISHOP: 1300000,
+                    chess.KNIGHT: 1350000,
+                }
                 return promo_val.get(move.promotion, 1300000)
             elif board.is_capture(move):
                 # Use SEE to separate good and bad captures.
