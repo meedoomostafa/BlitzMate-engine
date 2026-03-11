@@ -566,7 +566,8 @@ class BitboardEvaluator:
         white_pawns: int,
         black_pawns: int,
     ) -> int:
-        """King safety: castling rights, pawn shield, open files, and attacker pressure."""
+        """King safety: castling rights, pawn shield, open files, attacker pressure,
+        and enemy pawn proximity."""
         score = 0
         MISSING_SHIELD_PENALTY = 35
         PIECE_SHIELD_PENALTY = (
@@ -584,6 +585,15 @@ class BitboardEvaluator:
             chess.ROOK: 30,
             chess.QUEEN: 50,
         }
+
+        # Enemy pawn storm: penalties for pawns attacking king zone squares.
+        PAWN_ZONE_ATTACK_PENALTY = 30  # Per king-zone square attacked by enemy pawn.
+        PAWN_ZONE_QUEEN_EXTRA = 25  # Extra per square when enemy has queen.
+        PAWN_NEAR_KING_BASE = 25  # Per-unit for advanced pawns near king.
+
+        # Precompute pawn attack masks via bitboard shifts.
+        b_pawn_atk = ((black_pawns & ~FILES[0]) >> 9) | ((black_pawns & ~FILES[7]) >> 7)
+        w_pawn_atk = ((white_pawns & ~FILES[7]) << 9) | ((white_pawns & ~FILES[0]) << 7)
 
         # --- White King ---
         w_king_sq = board.king(chess.WHITE)
@@ -631,6 +641,27 @@ class BitboardEvaluator:
                     score -= OPEN_FILE_PENALTY
                 elif not own_pawns_on_file:
                     score -= SEMI_OPEN_FILE_PENALTY
+
+            # Enemy pawn proximity: penalize advanced Black pawns near White king.
+            w_king_zone_mask = (
+                board.attacks_mask(w_king_sq) | chess.BB_SQUARES[w_king_sq]
+            )
+            pawn_zone_attacks = chess.popcount(b_pawn_atk & w_king_zone_mask)
+
+            if pawn_zone_attacks > 0:
+                score -= pawn_zone_attacks * PAWN_ZONE_ATTACK_PENALTY
+                if board.pieces(chess.QUEEN, chess.BLACK):
+                    score -= pawn_zone_attacks * PAWN_ZONE_QUEEN_EXTRA
+
+            # Penalty for advanced enemy pawns within distance 2 of king.
+            for sq in chess.SquareSet(black_pawns):
+                p_file = chess.square_file(sq)
+                p_rank = chess.square_rank(sq)
+                dist = max(abs(p_file - w_king_file), abs(p_rank - w_king_rank))
+                if dist <= 2:
+                    advancement = 7 - p_rank  # Black pawn: rank 2 → advancement 5.
+                    if advancement >= 4:
+                        score -= (advancement - 3) * PAWN_NEAR_KING_BASE * (3 - dist)
 
             # King zone attacker pressure (non-linear scaling).
             if board.pieces(chess.QUEEN, chess.BLACK):
@@ -700,6 +731,27 @@ class BitboardEvaluator:
                     score += OPEN_FILE_PENALTY
                 elif not own_pawns_on_file:
                     score += SEMI_OPEN_FILE_PENALTY
+
+            # Enemy pawn proximity: penalize advanced White pawns near Black king.
+            b_king_zone_mask = (
+                board.attacks_mask(b_king_sq) | chess.BB_SQUARES[b_king_sq]
+            )
+            w_pawn_zone_attacks = chess.popcount(w_pawn_atk & b_king_zone_mask)
+
+            if w_pawn_zone_attacks > 0:
+                score += w_pawn_zone_attacks * PAWN_ZONE_ATTACK_PENALTY
+                if board.pieces(chess.QUEEN, chess.WHITE):
+                    score += w_pawn_zone_attacks * PAWN_ZONE_QUEEN_EXTRA
+
+            # Penalty for advanced White pawns within distance 2 of Black king.
+            for sq in chess.SquareSet(white_pawns):
+                p_file = chess.square_file(sq)
+                p_rank = chess.square_rank(sq)
+                dist = max(abs(p_file - b_king_file), abs(p_rank - b_king_rank))
+                if dist <= 2:
+                    advancement = p_rank  # White pawn: rank 5 → advancement 5.
+                    if advancement >= 4:
+                        score += (advancement - 3) * PAWN_NEAR_KING_BASE * (3 - dist)
 
             # King zone attacker pressure.
             if board.pieces(chess.QUEEN, chess.WHITE):
