@@ -569,6 +569,9 @@ class BitboardEvaluator:
         """King safety: castling rights, pawn shield, open files, and attacker pressure."""
         score = 0
         MISSING_SHIELD_PENALTY = 35
+        PIECE_SHIELD_PENALTY = (
+            15  # Reduced penalty when friendly non-pawn piece covers shield square.
+        )
         LOST_CASTLING_PENALTY = 100
         KING_DRIFT_PENALTY = 50
         OPEN_FILE_PENALTY = self.cfg.KING_OPEN_FILE_PENALTY
@@ -603,15 +606,21 @@ class BitboardEvaluator:
                 ):
                     score -= KING_DRIFT_PENALTY
 
-            # Pawn shield
+            # Pawn shield: full credit for pawns, partial credit for friendly pieces.
             shield_mask = self.king_shield_masks[w_king_sq] if w_king_sq < 56 else 0
             if shield_mask:
                 pawns_in_shield = (
                     shield_mask & board.pieces_mask(chess.PAWN, chess.WHITE)
                 ).bit_count()
+                pieces_in_shield = (
+                    shield_mask & board.occupied_co[chess.WHITE]
+                ).bit_count() - pawns_in_shield
                 max_shield = chess.popcount(shield_mask)
-                if pawns_in_shield < max_shield:
-                    score -= (max_shield - pawns_in_shield) * MISSING_SHIELD_PENALTY
+                fully_empty = max_shield - pawns_in_shield - pieces_in_shield
+                if fully_empty > 0:
+                    score -= fully_empty * MISSING_SHIELD_PENALTY
+                if pieces_in_shield > 0:
+                    score -= pieces_in_shield * PIECE_SHIELD_PENALTY
 
             # Open/semi-open files adjacent to king.
             for f in range(max(0, w_king_file - 1), min(8, w_king_file + 2)):
@@ -661,22 +670,26 @@ class BitboardEvaluator:
                 ):
                     score += KING_DRIFT_PENALTY
 
-            # Pawn shield (rank below for Black).
+            # Pawn shield (rank below for Black): partial credit for non-pawn pieces.
             f, r = b_king_file, b_king_rank
-            missing = 0
+            shield_penalty = 0
             if r > 0:
                 for df in [-1, 0, 1]:
                     if 0 <= f + df <= 7:
                         sq = chess.square(f + df, r - 1)
                         piece = board.piece_at(sq)
-                        if not (
+                        if (
                             piece
                             and piece.piece_type == chess.PAWN
                             and piece.color == chess.BLACK
                         ):
-                            missing += 1
-            if missing > 0:
-                score += missing * MISSING_SHIELD_PENALTY
+                            pass  # Full shield, no penalty.
+                        elif piece and piece.color == chess.BLACK:
+                            shield_penalty += PIECE_SHIELD_PENALTY
+                        else:
+                            shield_penalty += MISSING_SHIELD_PENALTY
+            if shield_penalty > 0:
+                score += shield_penalty
 
             # Open/semi-open files near black king.
             for f_idx in range(max(0, b_king_file - 1), min(8, b_king_file + 2)):
