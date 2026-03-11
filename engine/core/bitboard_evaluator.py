@@ -590,6 +590,7 @@ class BitboardEvaluator:
         PAWN_ZONE_ATTACK_PENALTY = 30  # Per king-zone square attacked by enemy pawn.
         PAWN_ZONE_QUEEN_EXTRA = 25  # Extra per square when enemy has queen.
         PAWN_NEAR_KING_BASE = 25  # Per-unit for advanced pawns near king.
+        PAWN_ATTACKER_WEIGHT = 15  # Weight for pawn "attackers" in zone pressure.
 
         # Precompute pawn attack masks via bitboard shifts.
         b_pawn_atk = ((black_pawns & ~FILES[0]) >> 9) | ((black_pawns & ~FILES[7]) >> 7)
@@ -664,22 +665,30 @@ class BitboardEvaluator:
                         score -= (advancement - 3) * PAWN_NEAR_KING_BASE * (3 - dist)
 
             # King zone attacker pressure (non-linear scaling).
-            if board.pieces(chess.QUEEN, chess.BLACK):
-                attacker_score = 0
-                attacker_count = 0
-                king_zone = board.attacks(w_king_sq) | chess.SquareSet(
-                    chess.BB_SQUARES[w_king_sq]
-                )
-                for pt in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]:
-                    for sq in board.pieces(pt, chess.BLACK):
-                        piece_attacks = board.attacks_mask(sq)
-                        if piece_attacks & int(king_zone):
-                            attacker_count += 1
-                            attacker_score += ATTACKER_WEIGHTS[pt]
+            # Includes enemy pawns attacking king zone as virtual attackers.
+            attacker_score = 0
+            attacker_count = 0
+            king_zone = board.attacks(w_king_sq) | chess.SquareSet(
+                chess.BB_SQUARES[w_king_sq]
+            )
 
-                # Scale non-linearly: more attackers = disproportionate danger.
-                if attacker_count >= 2:
-                    score -= attacker_score * attacker_count // 2
+            for pt in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]:
+                for sq in board.pieces(pt, chess.BLACK):
+                    piece_attacks = board.attacks_mask(sq)
+                    if piece_attacks & int(king_zone):
+                        attacker_count += 1
+                        attacker_score += ATTACKER_WEIGHTS[pt]
+
+            # Count enemy pawns attacking king zone as attackers.
+            if pawn_zone_attacks > 0:
+                attacker_count += pawn_zone_attacks
+                attacker_score += pawn_zone_attacks * PAWN_ATTACKER_WEIGHT
+
+            # Lower threshold to 1 when opponent has a queen.
+            has_opp_queen = bool(board.pieces(chess.QUEEN, chess.BLACK))
+            min_attackers = 1 if has_opp_queen else 2
+            if attacker_count >= min_attackers:
+                score -= attacker_score * attacker_count // 2
 
         # --- Black King ---
         b_king_sq = board.king(chess.BLACK)
@@ -753,22 +762,29 @@ class BitboardEvaluator:
                     if advancement >= 4:
                         score += (advancement - 3) * PAWN_NEAR_KING_BASE * (3 - dist)
 
-            # King zone attacker pressure.
-            if board.pieces(chess.QUEEN, chess.WHITE):
-                attacker_score = 0
-                attacker_count = 0
-                king_zone = board.attacks(b_king_sq) | chess.SquareSet(
-                    chess.BB_SQUARES[b_king_sq]
-                )
-                for pt in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]:
-                    for sq in board.pieces(pt, chess.WHITE):
-                        piece_attacks = board.attacks_mask(sq)
-                        if piece_attacks & int(king_zone):
-                            attacker_count += 1
-                            attacker_score += ATTACKER_WEIGHTS[pt]
+            # King zone attacker pressure (includes enemy pawn attacks).
+            attacker_score = 0
+            attacker_count = 0
+            king_zone = board.attacks(b_king_sq) | chess.SquareSet(
+                chess.BB_SQUARES[b_king_sq]
+            )
 
-                if attacker_count >= 2:
-                    score += attacker_score * attacker_count // 2
+            for pt in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]:
+                for sq in board.pieces(pt, chess.WHITE):
+                    piece_attacks = board.attacks_mask(sq)
+                    if piece_attacks & int(king_zone):
+                        attacker_count += 1
+                        attacker_score += ATTACKER_WEIGHTS[pt]
+
+            # Count enemy pawns attacking king zone as attackers.
+            if w_pawn_zone_attacks > 0:
+                attacker_count += w_pawn_zone_attacks
+                attacker_score += w_pawn_zone_attacks * PAWN_ATTACKER_WEIGHT
+
+            has_opp_queen = bool(board.pieces(chess.QUEEN, chess.WHITE))
+            min_attackers = 1 if has_opp_queen else 2
+            if attacker_count >= min_attackers:
+                score += attacker_score * attacker_count // 2
 
         return score
 
