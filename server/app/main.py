@@ -50,7 +50,6 @@ app.add_middleware(
 )
 
 
-
 @app.get("/health", response_model=HealthResponse)
 async def health():
     """Health check — confirms the engine is initialised."""
@@ -100,4 +99,5 @@ async def play(req: PlayRequest):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("server.app.main:app", host="127.0.0.1", port=7860, reload=True)
