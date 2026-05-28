@@ -243,8 +243,9 @@ python setup_assets.py
 
 ## Usage
 
+### Desktop & CLI Modes
 ```bash
-# GUI
+# GUI (PySide6)
 python -m gui.main
 
 # CLI
@@ -254,9 +255,24 @@ python -m interface.cli
 python -m interface.uci
 ```
 
+### Stateless API & Web Modes
+The project includes a production-grade stateless FastAPI server and a premium React/TypeScript Next.js web application.
+
+To run the API server locally:
+```bash
+python -m server.app.main
+```
+
+To run the Next.js frontend locally:
+```bash
+cd web
+npm run dev
+```
+
 ## Testing
 
 ```bash
+pip install -r requirements-dev.txt
 pytest tests/ -v
 ```
 
