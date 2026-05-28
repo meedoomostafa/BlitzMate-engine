@@ -1,0 +1,5 @@
+chess>=1.10.0,<2.0
+fastapi>=0.100.0,<1.0
+uvicorn>=0.20.0,<1.0
+pydantic>=2.0.0
+cachetools>=5.0.0
