@@ -26,6 +26,10 @@ export default function ChessGame() {
   const [premoveFen, setPremoveFen] = useState<string | null>(null);
   const premoveRef = useRef(premove);
 
+  // Click-to-move states
+  const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
+  const [legalMoves, setLegalMoves] = useState<string[]>([]);
+
   // Audio and Victory Modal states
   const [muted, setMuted] = useState(false);
   const [showResultModal, setShowResultModal] = useState(false);
@@ -72,6 +76,40 @@ export default function ChessGame() {
     }
   };
 
+  const clearSelection = () => {
+    setSelectedSquare(null);
+    setLegalMoves([]);
+  };
+
+  const handleSquareClick = (square: string, piece: string | undefined) => {
+    if (gameOver) return;
+
+    // If a square is already selected and user clicks a legal target → execute move
+    if (selectedSquare && legalMoves.includes(square)) {
+      onPieceDrop(selectedSquare, square);
+      clearSelection();
+      return;
+    }
+
+    // If clicked square has a White piece → select it
+    if (piece && piece.startsWith("w")) {
+      const baseFen = premoveFen || game.fen();
+      const tokens = baseFen.split(" ");
+      tokens[1] = "w";
+      const gameCopy = new Chess(tokens.join(" "));
+      try {
+        const moves = gameCopy.moves({ square: square as Square, verbose: true });
+        const targets = moves.map((m) => m.to);
+        setSelectedSquare(square);
+        setLegalMoves(targets);
+      } catch {
+        clearSelection();
+      }
+    } else {
+      clearSelection();
+    }
+  };
+
   const resetGame = () => {
     setGame(new Chess());
     setHistory([]);
@@ -83,6 +121,7 @@ export default function ChessGame() {
     setPremove(null);
     setPremoveFen(null);
     setShowResultModal(false);
+    clearSelection();
   };
 
   const handleSuggestMove = async () => {
@@ -192,11 +231,21 @@ export default function ChessGame() {
     if (thinking) {
       const baseFen = premoveFen || game.fen();
       const tokens = baseFen.split(" ");
-      tokens[1] = "w"; // Force White's turn for validation
+      tokens[1] = "w";
       const gameCopy = new Chess(tokens.join(" "));
+
+      // Check if source has a White piece (permissive premove validation)
+      const sourcePiece = gameCopy.get(sourceSquare as Square);
+      if (!sourcePiece || sourcePiece.color !== "w" || sourceSquare === targetSquare) {
+        playIllegalSound();
+        clearSelection();
+        return false;
+      }
+
+      // Try strict validation first
       try {
         const isPromotion =
-          gameCopy.get(sourceSquare as Square)?.type === "p" &&
+          sourcePiece.type === "p" &&
           ((gameCopy.turn() === "w" && targetSquare[1] === "8") ||
             (gameCopy.turn() === "b" && targetSquare[1] === "1"));
 
@@ -212,17 +261,30 @@ export default function ChessGame() {
             to: targetSquare,
             promotion: isPromotion ? "q" : undefined,
           });
-          setPremoveFen(baseFen); // Save original state before any premove
+          setPremoveFen(baseFen);
           setGame(gameCopy);
+          clearSelection();
           return true;
-        } else {
-          playIllegalSound();
-          return false;
         }
       } catch {
-        playIllegalSound();
-        return false;
+        // Strict validation failed, but permissive premove allows it
       }
+
+      // Permissive premove: accept the move even if strict validation fails
+      // (e.g., captures that are illegal now but may be legal after engine moves)
+      const isPromotion =
+        sourcePiece.type === "p" &&
+        ((gameCopy.turn() === "w" && targetSquare[1] === "8") ||
+          (gameCopy.turn() === "b" && targetSquare[1] === "1"));
+
+      setPremove({
+        from: sourceSquare,
+        to: targetSquare,
+        promotion: isPromotion ? "q" : undefined,
+      });
+      setPremoveFen(baseFen);
+      clearSelection();
+      return true;
     }
 
 
@@ -241,11 +303,13 @@ export default function ChessGame() {
       });
     } catch {
       playIllegalSound();
+      clearSelection();
       return false;
     }
 
     if (!moveObj) {
       playIllegalSound();
+      clearSelection();
       return false;
     }
 
@@ -254,6 +318,7 @@ export default function ChessGame() {
     setHistory((prev) => [...prev, moveObj.san]);
     setError(null);
     setSuggestion(null);
+    clearSelection();
 
     playSoundForMove(moveObj.san, false);
 
@@ -282,8 +347,13 @@ export default function ChessGame() {
           gameOver={gameOver}
           status={gameStatus}
           premove={premove}
-          onSquareClick={cancelPremove}
-          onSquareRightClick={cancelPremove}
+          selectedSquare={selectedSquare}
+          legalMoves={legalMoves}
+          onSquareClick={handleSquareClick}
+          onSquareRightClick={() => {
+            cancelPremove();
+            clearSelection();
+          }}
         />
         <StatusBar
           status={gameStatus}
