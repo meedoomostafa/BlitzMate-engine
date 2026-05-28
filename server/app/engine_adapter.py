@@ -45,8 +45,6 @@ class EngineAdapter:
         self._lock = asyncio.Lock()
         self._cache: TTLCache = TTLCache(maxsize=CACHE_MAX_SIZE, ttl=CACHE_TTL_S)
 
-
-
     def startup(self) -> None:
         """Initialise the engine (call once at server start)."""
         self._engine = SearchEngine(BitboardEvaluator(), depth=DEFAULT_DEPTH)
@@ -56,7 +54,6 @@ class EngineAdapter:
         if self._engine is not None:
             self._engine.close()
             self._engine = None
-
 
     async def get_best_move(
         self,
@@ -97,7 +94,7 @@ class EngineAdapter:
             search_result = await self._search_with_timeout_under_lock(board, depth)
             search_result["game_over"] = False
             search_result["status"] = self._game_status(board)
-            
+
             self._cache[cache_key] = search_result
             return search_result
 
@@ -162,23 +159,24 @@ class EngineAdapter:
             "error": None,
         }
 
-
-    async def _search_with_timeout_under_lock(self, board: chess.Board, depth: int) -> dict:
+    async def _search_with_timeout_under_lock(
+        self, board: chess.Board, depth: int
+    ) -> dict:
         """Run search under lock, with cooperative cancellation and outer timeout."""
         assert self._engine is not None, "Engine not initialised"
 
         self._engine.max_depth = depth
-        
+
         self._engine.nodes = 0
-        
+
         self._engine._stop_event.clear()
-        
+
         timer = threading.Timer(REQUEST_TIMEOUT_S, self._engine.stop)
         timer.start()
-        
+
         grace_period = 2.0
         outer_timeout = REQUEST_TIMEOUT_S + grace_period
-        
+
         try:
             result = await asyncio.wait_for(
                 asyncio.to_thread(self._search_sync, board, depth),
@@ -219,9 +217,7 @@ class EngineAdapter:
     @staticmethod
     def _validate_depth(depth: int) -> None:
         if depth < 1 or depth > MAX_DEPTH:
-            raise ValueError(
-                f"Depth must be between 1 and {MAX_DEPTH}, got {depth}."
-            )
+            raise ValueError(f"Depth must be between 1 and {MAX_DEPTH}, got {depth}.")
 
     @staticmethod
     def _parse_fen(fen: str) -> chess.Board:
