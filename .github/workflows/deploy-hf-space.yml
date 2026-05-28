@@ -1,0 +1,62 @@
+name: Deploy Hugging Face Space
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "engine/**"
+      - "server/**"
+      - ".github/workflows/deploy-hf-space.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Hugging Face CLI
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -U "huggingface_hub[cli]"
+
+      - name: Login to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          hf auth login --token "$HF_TOKEN"
+          hf auth whoami
+
+      - name: Deploy backend to Hugging Face Space
+        env:
+          HF_SPACE_REPO: ${{ secrets.HF_SPACE_REPO }}
+        run: |
+          hf upload "$HF_SPACE_REPO" . . \
+            --repo-type space \
+            --include "Dockerfile" \
+            --include ".dockerignore" \
+            --include "engine/**" \
+            --include "server/**" \
+            --include "README.md" \
+            --exclude "engine/assets/syzygy/**" \
+            --exclude "engine/assets/openings/**" \
+            --exclude "gui/**" \
+            --exclude "web/**" \
+            --exclude "tests/**" \
+            --exclude ".git/**" \
+            --exclude ".venv/**" \
+            --exclude "node_modules/**" \
+            --exclude ".gemini/**" \
+            --exclude "__pycache__/**" \
+            --exclude ".pytest_cache/**" \
+            --commit-message "Deploy BlitzMate API from GitHub Actions"

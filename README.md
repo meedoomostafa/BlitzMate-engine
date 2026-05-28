@@ -1,3 +1,12 @@
+---
+title: BlitzMate API
+emoji: ♟️
+colorFrom: gray
+colorTo: indigo
+sdk: docker
+app_port: 7860
+---
+
 # BlitzMate Chess Engine
 
 **A chess engine being rewritten in C++ for maximum performance, with Python bindings for the GUI and interface layers.**
