@@ -1,0 +1,15 @@
+.git
+.github
+.venv
+__pycache__
+.pytest_cache
+gui/
+tests/
+web/
+engine/assets/openings/
+engine/assets/syzygy/
+*.pyc
+*.pyo
+*.pyd
+.env
+server/.env
