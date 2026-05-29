@@ -7,10 +7,12 @@ RUN pip install --no-cache-dir -r server-requirements.txt
 
 COPY engine/ ./engine/
 COPY server/ ./server/
+COPY setup_assets.py ./setup_assets.py
+COPY entrypoint.sh ./entrypoint.sh
 
 ENV PYTHONPATH=/app
 ENV PORT=7860
 
 EXPOSE 7860
 
-CMD ["uvicorn", "server.app.main:app", "--host", "0.0.0.0", "--port", "7860"]
+ENTRYPOINT ["./entrypoint.sh"]

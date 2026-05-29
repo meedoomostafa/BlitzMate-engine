@@ -7,6 +7,7 @@ on:
     paths:
       - "Dockerfile"
       - ".dockerignore"
+      - "entrypoint.sh"
       - "engine/**"
       - "server/**"
       - ".github/workflows/deploy-hf-space.yml"
@@ -45,11 +46,12 @@ jobs:
             --repo-type space \
             --include "Dockerfile" \
             --include ".dockerignore" \
+            --include "entrypoint.sh" \
+            --include "setup_assets.py" \
             --include "engine/**" \
             --include "server/**" \
             --include "README.md" \
             --exclude "engine/assets/syzygy/**" \
-            --exclude "engine/assets/openings/**" \
             --exclude "gui/**" \
             --exclude "web/**" \
             --exclude "tests/**" \
