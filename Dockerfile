@@ -9,6 +9,7 @@ COPY engine/ ./engine/
 COPY server/ ./server/
 COPY setup_assets.py ./setup_assets.py
 COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
 
 ENV PYTHONPATH=/app
 ENV PORT=7860
