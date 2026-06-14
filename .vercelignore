@@ -1,0 +1,23 @@
+# Exclude Python environment and cache
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Exclude Vercel config
+.vercel/
+
+# Exclude local assets
+engine/assets/
+tmp_hf_repo/
+
+# Exclude local Next.js node_modules and builds
+node_modules/
+web/node_modules/
+.next/
+web/.next/
+
+# Exclude local Gemini cache
+.gemini/
