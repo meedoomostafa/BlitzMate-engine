@@ -31,16 +31,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -U "huggingface_hub[cli]"
 
-      - name: Login to Hugging Face
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          hf auth login --token "$HF_TOKEN"
-          hf auth whoami
-
       - name: Deploy backend to Hugging Face Space
         env:
           HF_SPACE_REPO: ${{ secrets.HF_SPACE_REPO }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           hf upload "$HF_SPACE_REPO" . . \
             --repo-type space \
