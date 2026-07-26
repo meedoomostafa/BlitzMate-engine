@@ -1,0 +1,6 @@
+schema_version: devdiag.baseline/v1
+entries:
+    - id: F-CI-ENV-001
+      reason: HF_SPACE_REPO/HF_TOKEN are deploy-workflow secrets, intentionally CI-only
+      created_at: 2026-07-26T15:18:27.994531038Z
+      created_by: medo
