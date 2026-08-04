@@ -76,6 +76,25 @@ class SearchEngine:
             except Exception:
                 pass
 
+    def _prepare_new_search(self) -> None:
+        """Housekeeping between searches: age TT, decay history, reset killers.
+
+        Must be called by every search entry point (synchronous and
+        asynchronous) so stale move-ordering scores decay instead of
+        accumulating forever.
+
+        Note: ``self.countermove`` is intentionally *not* cleared -- it is
+        keyed by the opponent's previous move, so entries remain valid
+        across searches within the same game.
+        """
+        self.tt.new_search()
+        # Snapshot keys: a stray worker thread mutating history mid-iteration
+        # must not crash housekeeping (dict size change during iteration).
+        for from_sq in list(self.history):
+            for to_sq in list(self.history[from_sq]):
+                self.history[from_sq][to_sq] //= 2
+        self.killers = defaultdict(lambda: [None, None])
+
     def _effective_depth(self, board: chess.Board) -> int:
         """Compute effective search depth based on game phase.
 
@@ -185,13 +204,8 @@ class SearchEngine:
         ponder_move = None
         best_score = 0
 
-        # Age TT entries and history scores between moves.
-        self.tt.new_search()
-        for from_sq in self.history:
-            for to_sq in self.history[from_sq]:
-                self.history[from_sq][to_sq] //= 2
-
-        self.killers = defaultdict(lambda: [None, None])
+        # Age TT entries, history scores, and killers between moves.
+        self._prepare_new_search()
 
         start_time = time.time()
 
@@ -278,7 +292,7 @@ class SearchEngine:
             best_move = None
             ponder_move = None
             self.nodes = 0
-            self.tt.new_search()
+            self._prepare_new_search()
             start_time = time.time()
 
             ASPIRATION_WINDOW = 50
