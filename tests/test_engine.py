@@ -531,6 +531,35 @@ class TestSearchEngine:
         assert final_move[0] is not None
         assert final_move[0] in board.legal_moves
 
+    def test_prepare_new_search_ages_heuristics(self):
+        # _prepare_new_search must decay history and reset killers.
+        self.engine.history[chess.E2][chess.E4] = 40000
+        self.engine.killers[0][0] = chess.Move.from_uci("h2h3")
+
+        self.engine._prepare_new_search()
+
+        assert self.engine.history[chess.E2][chess.E4] == 20000
+        assert self.engine.killers[0] == [None, None]
+
+    def test_start_search_ages_heuristics(self):
+        # Regression: start_search() must age history between searches,
+        # same as search_best_move() (previously only the sync path did).
+        # Non-book, >5-piece position so neither the opening books nor the
+        # Syzygy tablebases short-circuit before housekeeping runs.
+        board = chess.Board(
+            "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 5 4"
+        )
+        # Seed a square pair that can never occur as a legal move here
+        # (h8 -> a1), so the search itself cannot touch this entry.
+        self.engine.history[chess.H8][chess.A1] = 40000
+
+        self.engine.start_search(board, depth=1)
+        if self.engine._thread:
+            self.engine._thread.join(timeout=10)
+
+        # History must have decayed (halved exactly once for this entry).
+        assert self.engine.history[chess.H8][chess.A1] == 20000
+
 
 # ════════════════════════════════════════════════════════════════════════════
 #  MOVE ORDERING TESTS
@@ -951,6 +980,94 @@ class TestPVLine:
         board = chess.Board()
         pv = eng._get_pv_line(board, 3)
         assert len(pv) == 0
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  CONFIG LOADER TESTS
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class TestConfigLoader:
+    def test_known_keys_applied(self, tmp_path):
+        from engine.config import Config
+
+        toml = tmp_path / "config.toml"
+        toml.write_text('[search]\ndepth = 9\n\n[ui]\nengine_name = "X"\n')
+        cfg = Config.load_from_toml(str(toml))
+        assert cfg.search.depth == 9
+        assert cfg.ui.engine_name == "X"
+
+    def test_unknown_key_warns_and_is_ignored(self, tmp_path, capsys):
+        from engine.config import Config
+
+        toml = tmp_path / "config.toml"
+        toml.write_text("[search]\nno_such_knob = 1\n")
+        cfg = Config.load_from_toml(str(toml))
+        err = capsys.readouterr().err
+        assert "no_such_knob" in err
+        assert not hasattr(cfg.search, "no_such_knob")
+
+    def test_unknown_section_warns(self, tmp_path, capsys):
+        from engine.config import Config
+
+        toml = tmp_path / "config.toml"
+        toml.write_text("[logging]\nlevel = 'DEBUG'\n")
+        Config.load_from_toml(str(toml))
+        assert "logging" in capsys.readouterr().err
+
+    def test_scalar_section_collision_does_not_discard_config(self, tmp_path, capsys):
+        from engine.config import Config
+
+        toml = tmp_path / "config.toml"
+        toml.write_text('search = 5\n\n[ui]\nengine_name = "Kept"\n')
+        cfg = Config.load_from_toml(str(toml))
+        err = capsys.readouterr().err
+        assert "search" in err
+        # Other sections must still be applied.
+        assert cfg.ui.engine_name == "Kept"
+
+    def test_type_mismatch_warns_and_keeps_default(self, tmp_path, capsys):
+        from engine.config import Config
+
+        toml = tmp_path / "config.toml"
+        toml.write_text(
+            '[search]\ndepth = "six"\nthreads = true\n\n'
+            "[search.hash_size_mb]\nx = 1\n"
+        )
+        cfg = Config.load_from_toml(str(toml))
+        err = capsys.readouterr().err
+        assert "depth" in err
+        assert "threads" in err  # bool must not satisfy an int attribute
+        assert "hash_size_mb" in err
+        # Defaults must survive malformed overrides.
+        assert cfg.search.depth == 6
+        assert cfg.search.threads == 1
+        assert cfg.search.hash_size_mb == 64
+
+    def test_missing_file_returns_defaults(self):
+        from engine.config import Config
+
+        cfg = Config.load_from_toml("/nonexistent/config.toml")
+        assert cfg.search.depth == 6
+
+    def test_repo_config_toml_loads_without_warnings(self, capsys):
+        from engine.config import Config
+
+        Config.load_from_toml()
+        captured = capsys.readouterr()
+        assert "Warning" not in captured.out
+        assert "Warning" not in captured.err
+
+    def test_warnings_never_go_to_stdout(self, tmp_path, capsys):
+        # UCI protocol safety: config warnings must go to stderr only.
+        from engine.config import Config
+
+        toml = tmp_path / "config.toml"
+        toml.write_text("[search]\nno_such_knob = 1\n\n[logging]\nx = 1\n")
+        Config.load_from_toml(str(toml))
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "Warning" in captured.err
 
 
 if __name__ == "__main__":
