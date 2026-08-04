@@ -1,6 +1,7 @@
 """Engine configuration: dataclasses loaded from config.toml."""
 
 import os
+import sys
 import tomllib
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
@@ -935,28 +936,59 @@ class Config:
         cfg = Config()
         if not os.path.exists(path):
             return cfg
+
+        # Warnings go to stderr: engine.config is imported before the UCI
+        # handshake, and stray stdout lines would corrupt the protocol.
+        def _warn(msg: str) -> None:
+            print(f"Warning: {msg}", file=sys.stderr)
+
         try:
             with open(path, "rb") as f:
                 raw = tomllib.load(f)
-            # Load all config sections
-            if "search" in raw:
-                for k, v in raw["search"].items():
-                    if hasattr(cfg.search, k):
-                        setattr(cfg.search, k, v)
-            if "eval" in raw:
-                for k, v in raw["eval"].items():
-                    if hasattr(cfg.eval, k):
-                        setattr(cfg.eval, k, v)
-            if "analyzer" in raw:
-                for k, v in raw["analyzer"].items():
-                    if hasattr(cfg.analyzer, k):
-                        setattr(cfg.analyzer, k, v)
-            if "ui" in raw:
-                for k, v in raw["ui"].items():
-                    if hasattr(cfg.ui, k):
-                        setattr(cfg.ui, k, v)
+            # Load all config sections. Unknown keys and type mismatches are
+            # rejected loudly so tuning values are never silently discarded.
+            sections = {
+                "search": cfg.search,
+                "eval": cfg.eval,
+                "analyzer": cfg.analyzer,
+                "ui": cfg.ui,
+            }
+            for section_name, target in sections.items():
+                section = raw.get(section_name, {})
+                if not isinstance(section, dict):
+                    _warn(
+                        f"config.toml key '{section_name}' should be a "
+                        f"[{section_name}] table and was ignored"
+                    )
+                    continue
+                for k, v in section.items():
+                    if not hasattr(target, k):
+                        _warn(
+                            f"config.toml key [{section_name}].{k} does not "
+                            f"match any {type(target).__name__} attribute "
+                            f"and was ignored"
+                        )
+                        continue
+                    current = getattr(target, k)
+                    # Exact type match: isinstance() would let bool slip
+                    # through for int attributes (bool subclasses int).
+                    if current is not None and type(v) is not type(current):
+                        _warn(
+                            f"config.toml key [{section_name}].{k} expects "
+                            f"{type(current).__name__}, got "
+                            f"{type(v).__name__}; ignored"
+                        )
+                        continue
+                    setattr(target, k, v)
+            for name, value in raw.items():
+                if name not in sections:
+                    kind = "section" if isinstance(value, dict) else "key"
+                    _warn(
+                        f"config.toml {kind} '{name}' is not recognized "
+                        f"and was ignored"
+                    )
         except Exception as e:
-            print(f"Warning: Could not load config.toml: {e}")
+            _warn(f"Could not load config.toml: {e}")
         return cfg
 
 
