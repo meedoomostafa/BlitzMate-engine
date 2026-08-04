@@ -40,24 +40,30 @@ The Python engine searches at depth 5-6 in standard time controls. The C++ rewri
 chess_engine/
 +-- engine_cpp/          # C++ engine (new, in development)
 |   +-- src/
-|   |   +-- eval.cpp
-|   |   +-- eval.h
-|   |   +-- search.cpp
-|   |   +-- search.h
-|   |   +-- tt.cpp
-|   |   +-- tt.h
+|   |   +-- eval.cpp / eval.h
+|   |   +-- search.cpp / search.h
+|   |   +-- tt.cpp / tt.h
+|   |   +-- book.cpp / book.h           # Polyglot opening book
+|   |   +-- time_manager.cpp / .h
+|   |   +-- tablebase.cpp / .h          # Syzygy via Fathom
+|   |   +-- uci_main.cpp                # standalone UCI binary
 |   |   +-- bindings.cpp
 |   +-- tests/
 |   +-- CMakeLists.txt
 |   +-- chess.hpp         # chess-library (header-only)
 |
 +-- engine_py/           # Python engine (current, reference implementation)
+|   +-- main.py          # Engine facade
+|   +-- analyzer.py      # Post-game move classification
+|   +-- config.py        # All tunable parameters (eval/search dataclasses)
+|   +-- config.toml      # Runtime overrides for select parameters
 |   +-- core/
 |   |   +-- search.py
 |   |   +-- bitboard_evaluator.py
+|   |   +-- loopboard_evaluator.py      # readable reference evaluator
 |   |   +-- transposition.py
 |   |   +-- board.py
-|   +-- config.py
+|   |   +-- utils.py
 |   +-- assets/          # Opening books + Syzygy tablebases
 |
 +-- interface/           # Protocol layer (Python, calls engine via bindings)
@@ -70,20 +76,29 @@ chess_engine/
 |   +-- helpers.py
 |   +-- widgets/
 |
++-- server/              # Stateless FastAPI server (Hugging Face Space deploy)
+|   +-- app/
+|
++-- web/                 # Next.js web frontend (Vercel deploy)
+|
 +-- tests/
     +-- test_engine.py
     +-- test_integration.py
+    +-- test_round2_fixes.py
+    +-- test_server.py
 ```
 
 **Layer rules:**
 - `engine_cpp/` and `engine_py/` have zero UI/IO dependencies.
-- `interface/` and `gui/` import from the engine only.
-- After the C++ rewrite, `interface/` and `gui/` will import from a Python binding module (`blitzmate`) instead of `engine_py.core`.
+- `interface/`, `gui/`, and `server/` import from the engine only.
+- After the C++ rewrite, `interface/`, `gui/`, and `server/` will import from a Python binding module (`blitzmate`) instead of `engine_py.core`.
 
 **Migration strategy:**
 - The current `engine/` directory will be renamed to `engine_py/` (reference implementation).
 - The new C++ engine will live in `engine_cpp/`.
-- Both will coexist during development. Once the C++ engine reaches parity, `engine_py/` becomes archive/reference only.
+- Both will coexist during development. Once the C++ engine reaches parity, `engine_py/` remains as the reference implementation and runtime fallback (consumers try `import blitzmate` first, falling back to `engine_py.core` with a warning).
+
+**Issue numbering note:** GitHub numbers #1–#14, #37, #39–#40 (and various later numbers) in this repo are pull requests, not issues. The migration issues are #15–#36 and #38, plus any created later. If you ever encounter a prerequisite reference below #15 inside an issue body, it is legacy numbering — the current issue number is `legacy + 14` (e.g., legacy "#1 CMake setup" = current #15).
 
 ---
 
@@ -154,6 +169,7 @@ This eliminates the need to implement board representation, move generation, and
 - [ ] Set up Google Test / Catch2 test framework
 - [ ] Configure CI build (CMake + tests)
 - [ ] Add compiler flags (-O3, -march=native, -flto for release)
+- [ ] Add clang-format config and clang-tidy/cppcheck static analysis
 - [ ] Verify FEN import/export through chess-library API
 
 ### Phase 2 -- Evaluation
@@ -184,12 +200,15 @@ This eliminates the need to implement board representation, move generation, and
 - [ ] Implement late move reductions (table-based R values)
 - [ ] Implement futility pruning (reverse futility + standard, with endgame guard)
 - [ ] Implement check extensions (+1 depth)
-- [ ] Implement quiescence search (captures, check evasions, SEE pruning, delta pruning)
-- [ ] Implement time management (allocate time from clock + increment)
+- [ ] Implement quiescence search (captures + check evasions, SEE pruning, delta pruning; intentionally narrower than the Python reference, which also searches first-ply quiet checks and quiet queen promotions — covered by the differential-testing deviation allowlist)
+- [ ] Implement time management (standalone TimeManager module)
 - [ ] Implement repetition detection with contempt
 - [ ] Add Polyglot opening book probing
+- [ ] Root search orchestration: book probe -> tablebase probe -> iterative deepening, with TimeManager integration
+- [ ] Define mate score convention (MATE_SCORE / MATE_THRESHOLD, TT ply adjustment, `info score mate N`)
+- [ ] Build standalone UCI binary (`blitzmate-uci`) for cutechess/Arena testing
 - [ ] Add EPD tactical test suite (WAC, STS)
-- [ ] Differential testing: compare bestmove at fixed depth against Python engine
+- [ ] Differential testing: compare bestmove at fixed depth against Python engine (with documented-deviation allowlist)
 
 ### Phase 4 -- Python Bindings
 
@@ -199,10 +218,12 @@ This eliminates the need to implement board representation, move generation, and
 - [ ] Expose `Engine` class with `search()` and `evaluate()` methods
 - [ ] Implement GIL release during search (so GUI stays responsive)
 - [ ] Convert final bestmove from C++ move format to python-chess `Move` object
-- [ ] Bridge config.toml parameters from Python to C++ engine
+- [ ] Expose position/move-history API (`set_position(fen, moves)`) so repetition detection works through the bindings
+- [ ] Bridge engine parameters from `engine_py/config.py` dataclasses (EvalConfig/SearchConfig) to the C++ engine (note: `config.toml` only overrides a small set of runtime keys)
 - [ ] Create `blitzmate` Python package (importable as `import blitzmate`)
 - [ ] Update `gui/` imports from `engine_py.core` to `blitzmate`
 - [ ] Update `interface/` imports from `engine_py.core` to `blitzmate`
+- [ ] Update `server/app/engine_adapter.py` imports to `blitzmate`
 - [ ] Package with scikit-build-core for wheel distribution
 - [ ] Verify all existing Python tests pass with C++ backend
 
@@ -210,14 +231,15 @@ This eliminates the need to implement board representation, move generation, and
 
 **Goal**: Full test coverage, GUI and interface work identically to Python version.
 
-- [ ] Run full pytest suite (`test_engine.py` + `test_integration.py`) with C++ backend
-- [ ] UCI compliance test with CuteChess or Arena
+- [ ] Run full pytest suite (all of `tests/`: `test_engine.py`, `test_integration.py`, `test_round2_fixes.py`, `test_server.py`) with C++ backend
+- [ ] UCI compliance test with CuteChess or Arena (via the standalone UCI binary)
 - [ ] GUI smoke test (play a full game through the PySide6 interface)
 - [ ] Benchmark NPS: compare C++ vs Python engine on same positions
 - [ ] ELO estimation: run gauntlet against known engines via cutechess-cli
 - [ ] Add Syzygy tablebase probing via Fathom library
 - [ ] Set up cibuildwheel for Linux/macOS/Windows wheel builds
 - [ ] Add ASan/UBSan/TSan in debug CI configuration
+- [ ] Migrate deployments (Docker/HF Space server, Vercel web) to the C++ engine wheels
 
 ### Phase 6 -- Advanced (Post-MVP)
 

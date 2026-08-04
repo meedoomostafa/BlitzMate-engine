@@ -11,8 +11,8 @@ chess_engine/
 ├── engine/              # Core engine logic (no UI dependencies)
 │   ├── main.py          # Engine facade — single entry point for consumers
 │   ├── analyzer.py      # Post-game move classification (Brilliant → Blunder)
-│   ├── config.py        # Dataclass config loaded from config.toml
-│   ├── config.toml      # Tunable parameters (search, eval, UI)
+│   ├── config.py        # All tunable parameters (search/eval/analyzer/UI dataclasses)
+│   ├── config.toml      # Optional runtime overrides for select keys
 │   └── core/
 │       ├── search.py            # Negamax + iterative deepening + pruning
 │       ├── bitboard_evaluator.py # Bitboard-based static evaluation (primary)
@@ -31,9 +31,16 @@ chess_engine/
 │   ├── helpers.py       # EnginePool, SoundManager, shared config
 │   └── widgets/         # Board, eval bar, history, timeline, etc.
 │
+├── server/              # Stateless FastAPI server (Hugging Face Space deploy)
+│   └── app/             # main.py, engine_adapter.py, schemas.py, config.py
+│
+├── web/                 # Next.js web frontend (Vercel deploy)
+│
 ├── tests/               # pytest test suites
 │   ├── test_engine.py       # Unit tests (board, evaluator, search, TT)
-│   └── test_integration.py  # End-to-end (full games, UCI, API, analyzer)
+│   ├── test_integration.py  # End-to-end (full games, UCI, API, analyzer)
+│   ├── test_round2_fixes.py # Regression tests for engine fixes
+│   └── test_server.py       # Stateless server API tests
 │
 ├── setup_assets.py      # Download opening books + Syzygy tablebases
 ├── requirements.txt     # Top-level dependencies
@@ -47,19 +54,20 @@ chess_engine/
 The project follows a strict **layered architecture**:
 
 ```
-┌──────────────┐
-│   gui/       │  Presentation layer (PySide6)
-├──────────────┤
-│ interface/   │  Protocol layer (UCI, REST, CLI)
-├──────────────┤
-│   engine/    │  Core logic (zero UI/IO dependencies)
-└──────────────┘
+┌──────────────────────────┐
+│   gui/    web/           │  Presentation layer (PySide6, Next.js)
+├──────────────────────────┤
+│ interface/  server/app/  │  Protocol layer (UCI, REST, CLI, stateless API)
+├──────────────────────────┤
+│   engine/                │  Core logic (zero UI/IO dependencies)
+└──────────────────────────┘
 ```
 
 **Rules:**
-- `engine/` never imports from `interface/` or `gui/`.
-- `interface/` imports from `engine/` only.
+- `engine/` never imports from `interface/`, `gui/`, or `server/`.
+- `interface/` and `server/` import from `engine/` only.
 - `gui/` imports from `engine/` only.
+- `web/` talks to `server/` over HTTP only.
 - Each layer has its own `requirements.txt` for isolated installs.
 
 ---
@@ -89,7 +97,8 @@ When `search_best_move(board)` is called, the pipeline is:
        ├─ Move Ordering: TT → Good Captures → Killers → History
        ├─ Late Move Reductions (table-based)
        ├─ PVS (null-window for non-PV nodes)
-       └─ Quiescence Search (captures + first-ply checks)
+       └─ Quiescence Search (captures, check evasions, first-ply quiet
+          checks, quiet queen promotions)
            ├─ Stand-pat / Delta pruning
            ├─ SEE pruning (losing captures)
            └─ MVV-LVA sorted captures
@@ -139,7 +148,7 @@ All scores are in **centipawns** (100 cp = 1 pawn). Positive favors White; the e
 
 ## Configuration
 
-All tunable parameters live in `engine/config.toml`, loaded at import time into `engine.config.CONFIG` (a frozen dataclass tree).
+All tunable parameters are defined as dataclass defaults in `engine/config.py`, loaded at import time into `engine.config.CONFIG` (a mutable dataclass tree, treated as read-only after import). This is the single source of truth — in particular for evaluation parameters (material values, PSTs, bonuses, penalties).
 
 ```
 CONFIG
@@ -149,7 +158,7 @@ CONFIG
 └── .ui       (UIConfig)      — engine_name, engine_author
 ```
 
-To override defaults, edit `config.toml`. The dataclass defaults serve as fallback if the TOML is missing or incomplete.
+`engine/config.toml` can override individual values at load time, but only keys whose names match a dataclass attribute are applied; unknown keys are rejected with a warning. Eval tuning (PSTs, material tables, etc.) is intentionally *not* exposed via TOML — edit `EvalConfig` in `config.py` directly.
 
 ---
 
